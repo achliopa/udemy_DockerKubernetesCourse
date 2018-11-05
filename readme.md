@@ -42,4 +42,6 @@
 ### Lecture 5 - Docker Setup on Windows
 
 * we choose to use Linux containers
-* 
+* restart machine
+* sign in
+* use terminal
