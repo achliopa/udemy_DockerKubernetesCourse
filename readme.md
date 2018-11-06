@@ -296,3 +296,104 @@ docker run -it alpine sh
 >> apk add --update redis
 ```
 * on another terminal we run `docker commit -c 'CMD["redis-server"]' <container id>` . this command takes a snapshot of the runnign container genrating an image passing in the primary command (-c flag). we cane even tag the generated image
+
+## Section 4 - Making Real Projects with Docker
+
+### Lecture 34 - Project Outline
+
+* in this section we  will do a new project: create a tiny nodeJS web app => wrap it up in a docker container => access the app from a browser running on our machine
+* steps in our implementation:
+	* create nodeJS webapp
+	* create a Dockerfile
+	* build image from dockerfile
+	* run image as container
+	* connect to web app from browser
+
+### Lecture 35 - Node Server Setup
+
+* we make a project dir /simpleweb and cd into it
+* we add a package.json file which is a bare minimum one. just express and a start script
+```
+{
+	"dependencies": {
+		"express": "*"
+	},
+	"scripts": {
+		"start": "node index.js"
+	}
+}
+```
+* we add app root js file index.js in root dir as well with boilerplate express js code
+```
+const express = require 'express';
+
+const app = express();
+
+app.get('/', (req,res)=>{
+	res.send("Hi from node");
+});
+
+app.listen(3000, ()=>{
+	console.log("Server is running on port 3000...");
+})
+```
+
+* so no `npm init` (no node_modules dir) no fancy code yet
+
+### Lecture 37 - A few planned Errors
+
+* to start node we need to install dependencies `npm install` and start the server `npm start`
+* both assume npm package is installed apart from node
+* we start thinking how to setup our Dockerfile
+	* Specify base image: FROM alpine
+	* Run some commands to install aditional programs: RUN npm install
+	* Specify a command to run on container setup: CMD ["npm","start"]
+* we expect a fail...  alpine is not expected to have node and npm installed
+* we add the dockerfile with these contents and run docker build... it fails. npm is not found
+
+### Lecture 38 - base Image Issues
+
+* we use alpine as base image. this is a small image that does not suitalbe for owr needs.
+* we need an image with node in and npm. maybe node. OR add commands to install node and npm on alpine
+* in [Dockerhub](http://hub.docker.com) node image has  node preinstalled. we see all the available versions eg. node:6.14 or node:alpine (most compact version)
+* in Docker world Alpine means Minimum
+* we build the new Dockerfile
+```
+# specify base image
+FROM node:alpine
+## install some dependencies
+RUN npm install
+# default command
+CMD ["npm","start"]
+```
+* we get errors when running the comman npm install... the files in our machine are missing from teh container
+* Files on our local machine are NOT by default avialble in ontainer FS (HD segemtn)
+* so container cannot find package.json
+* we need to allow use of local files inthe build container in the Dockerfile
+
+### Lecture 40 - Copying Build Files
+
+* To copy files from local machine to container: `COPY ./ ./` COPY from to
+	* COPY : dockerfile commande for copying files
+	* ./ : (1) path to folder to copy from on our machine relative to build context.
+	* ./ : (2) place to copy stuff to inside the container 
+* build context? PWD altered by docker build <path> . in our case where Dockerfile resides
+* we put this command before the `RUN npm install`
+* image is created... we tag it `docker build -t achliopa/simpleweb .`
+* we run it: `docker run achliopa/simpleweb`
+* it runs.
+* we visit with borwser localhost:3000 and get an error... we need to map ports to container
+
+### Lecture 41 - Container Port Mapping
+
+* our  browser makes a request to localhost:8080 (on our machine)
+* container has its own se of ports that by default do not accept incoming traffic
+* we need to set explicit port mapping  to enable port forwarding to the localhost
+* this is for incoming comm. container can talk to the outside world (it does it to get dependencies)
+* Port mapping is set in Docker Run command
+* Docker Run with Port mapping: `docker run -p 3000:3000 <image id>`
+	* -p : port forwarding flag
+	* 3000 : (1) localhost port to route from
+	* 3000 : (2) contatiner port to route to
+
+* ports do not have to be identical
