@@ -168,4 +168,65 @@
 * there is no free access from outside the container to the inside
 * we need to be able to run a second command in the container
 
-### Lecture 20 - 
+### Lecture 20 - Executing Commands in Running Containers
+
+* Execute an additional command in a container: `docker exec -it <container id> <command>`
+	* exec: run another command
+	* -it: allow us to provide input to the container
+	* <container id>: id of the (running) container
+	* <command>: command to execute
+* if we skip -it flag the command is executed but we cannot input any  text. it is running in the background. in our case redis-cli without an input attached closes
+
+### Lecture 21 - THe purpose of the IT flag
+
+* processes in docker run in a linux environment.
+* any process running in a linux environment. has 2 communication channels attached to it. STDIN, STDOUT, STDERR
+* STDIN is standard input (what we type in the terminal)
+* STDOUT is standard output (what shows up on terminal screen)
+* STDERR is standard error (shown up in terminal string)
+* typically STD comm channels are attached to the terminal that invoked the process unless programmatically directed elsewere
+* -it is -i and -t combined
+	* -i: attaches processes ind ocker stdin to terminal
+	* -t: makes text look pretty in terminal
+
+### Lecture 22 - Getting a Command Promt in a COntainer
+
+* exec command is also used to give us terminal (shell) access to arunning container
+* in that way we can write commands without the need to issue new docker exec commands
+* we do this by executing the sh command in a running container `docker exec -it <container id> sh`
+* what we get is a terminal in the running container linux running instance
+* we can run the command multiple times for multiple shells
+* sh shands for shell. other command processors are: bash, powershell, zsh
+* almost all containers have sh installed. some more bulky container include bash as well
+
+### Lecture 23 - Starting with a Shell
+
+* we can use the -it flag with run command and start a shell immediatley after the container starts up
+* the downside of running `docker run -it <container id> sh` is that the primary process does not start up automatically. just the command we spec (sh). so we have to start the primary process our selves
+
+### Lecture 24 - Container Isolation
+
+* to exit from a container shell we type ctrl+D or exit
+* 2 separate containers by default do not share their FS
+* to show case we start 2 busybox containers in shell mode `docker run -it busybox sh`
+* in the first we touch the file in its fs. the file is not existent in the orthers fs
+
+## Section3 - Building Custom Images Through Docker Server
+
+### Lecture 25 - Creating Docker images
+
+* to make our own image that will run in our container we have to:
+	* Create our Dockerfile: a config file that defines how our container should behave
+	* then we provide the dockerfile to the docker cli
+	* cli sends it to the docker deamon to build an image
+	* we have our usable image to run
+* in a dockerfile:
+	* we specify a base image (existing image)
+	* run additional commands to install additional programs
+	* specify a command to run on container startup
+
+### Lecture 26 - Building a Dockerfile
+
+* 
+
+
