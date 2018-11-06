@@ -227,6 +227,72 @@
 
 ### Lecture 26 - Building a Dockerfile
 
-* 
+* our first custom dockerfile will create an image that runs redis-server 
+* we create a project dir for the image /redis-image
+* we cd into it and open our text editor
+* we create anew file named 'Dockerfile'
+* comments in dockerfile are startign with #
+* first we use an existinf docker image as a base `FROM alpine`
+* then we download and install a dependency `RUN apk add --update redis`
+* finally we tell the image what to do when it starts as a container `CMD ["redis-server"]`
+* with the dockerfile ready we build it: we run `docker build .` in the project root folder where Dockerfile resides
+* the image builds and we get a message in the end `Successfully built 08960804125d`
+* we cp the id. this is the imagege id. we use it to run our customimage `docker run 08960804125d`
+* redis is running OK
 
+### Lecture 27 - Dockerfile teardown
 
+* 'FROM' 'RUN' 'CMD' : instructions telling docker server what to do
+* 'alpine' 'apk add --update redis' '["redis-server' : arguments to the instructions
+* `FROM alpine` sets the image it will use as a base
+
+### Lecture 28 - What's a Base Image?
+
+* ANALOGY: writing a dockerfile == being given a computer with no OS and being told to install Chrome. what would we do??
+	* install an OS => `FROM alpine`
+	* start up default browser ------------------
+	* navigate to chrome.google.com
+	* download installer        => `RUN apk add --update chrome`
+	* open file/folder explorer
+	* execute installer-------------------------
+	* execute chrome runnable `CMD ["chrome`]`
+* why do we use alpine as base image??? we choose this image because it suits our needs.
+* if we used ubuntu we would use `apt-get install chrome`
+
+### Lecture 29 - The Build Process in Detail
+
+* when we run build command the '.' is the build context (files we want to includ ein build relative to the PWD)
+* each line in dockerfile produces a build step
+* for every step in teh build an intermediate container is used (then discarded)
+* fr step 2 docker server looks at previous step and runs a temp container to host the command
+* after the installation container is stopped and docker takes a filesystem snapshot out of it and saves it as a temp image with redis to be used int he next step (3/3)
+* again step 3 runs a temp container out of the previous image.. in the end the output of step 3 (fs snapshot + primary commad) are the final build image 
+
+### Lecture 31 - Rebuilds with Cache
+
+* the reason of dockers great perforance when building new image: 
+	* every step outputs its own image
+	* if we add an other step (e.g RUN apk add --update gcc) and rebuild it goes very fast
+	* this is why the temp images of each step are cached. so no recreated
+	* even  virgin base image is not downloaded its local
+	* it does not even go to step one. uses cached image of step 2 and goes to 3
+* reversing steps order invalidates cach
+* put your changes down the line to save time
+
+### Lecture 32 - Tagging an Image
+
+* our image has a generated meaningless image name
+* Tagging an image: `docker build -t <dockerID>/<project>:<version> .`
+	* -t : tag the image flag
+	*  <dockerID>/<project>:<version> : image tag following the docker  standard
+	* . : specifies the directury of files/folders to  use for the build (. == current dir)
+
+### Lecture 33 - Manual image Generation with Docker Commit
+
+* the docker build process use images to build containers and we use these containers to generate images
+* we can manualy do the same. start a container ->  run a  command in it (install sthing) and generate an image out of it
+```
+docker run -it alpine sh
+>> apk add --update redis
+```
+* on another terminal we run `docker commit -c 'CMD["redis-server"]' <container id>` . this command takes a snapshot of the runnign container genrating an image passing in the primary command (-c flag). we cane even tag the generated image
