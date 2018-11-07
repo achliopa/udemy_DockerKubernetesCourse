@@ -397,3 +397,234 @@ CMD ["npm","start"]
 	* 3000 : (2) contatiner port to route to
 
 * ports do not have to be identical
+* we can visit our running app now 
+
+### Lecture 42 - Specifying a Working Directory
+
+* we will run our built image starting a shell inside it to do dbugging `docker run -it achliopa/simpleweb sh` we dont do port mapping as we dont need to visit app for debugging
+* we run ls and we see that our peoject files are added to the alpine linux root folder /
+* this is not good practice.. we might overwritte linux kernel folders
+* we need to define a working dir in the Dockerfile. w use the command `WORKDIR /usr/app`
+* what this command does? it enforces that any following command will be executed relative to this path in the container of the image to be built. so `COPY ./ ./` is equivalent to `COPY ./ ./usr/app` if we didnt use the command
+* if folder does not exist will create it
+* usr/app is a safe place for our app we could use /home instead or /var
+* we rebuild it (we changed the order of commands so no caching)
+* if we open shel in the container it takes us directly to /usr/app
+* we can run our app with port forwarding and visit browser
+* in that running container we get its id and run `docker exec -it <cont id> sh` to open a terminal inside
+
+### Lecture 43 - Unnecessary Rebuilds
+
+* with our app running we visit our webpage and see content
+* we change the index.js in the project folder in our local machine  modifying the console.log
+* as we expect when we refreh page we see no change... we have to rebuild and rerun image
+* step 3 'COPY ./ ./' copies all contents of project folder again even if the change is on 1 file 
+* we also dont need to run 'CMD npm install' as  no change to package.json was made
+* also we should try excluding node_modules from the COPY (faster)
+
+### Lecture 44 - Minimizing Cache Busting and Rebuilds
+
+* npm install command cares about package.json
+* we can solve the unecessary reinstall by grouping COPY and CMD of dependent files
+```
+COPY ./package.json ./
+RUN npm install
+COPY ./ ./
+```
+* this approach is node specific
+* the result is that any change on code will not trigger npm install
+
+## Section 5 - Docker Compose with Multiple Local Containers
+
+### Lecture 45 - App Overview
+
+* we will create a docker container with a webapp that displayes the number of visits to the webpage
+* to build it we will need 2 components. a node(express) web app and a redis server (in memory data storage) 
+* one possible approach is to use a single container with node and redis running inside. if the app receives a lot of traffic this will be abottleneck.
+* as we get more traffic we will need more web servers (more instances of docker containers)
+* redis server will run multiple times as well. so between redis servers it will be inconsisency on the data they store... so whichever conteiner we connect to will give a different number
+* so a scaled up app will have mulptiple docker node containers and a simngle docker redis container
+* first we will build an app with 2 containers and then we will scale  it up
+
+### Lecture 46 - App Server Code
+
+* we make a new project dir /visits and cd into it
+* we will create a package.json file
+```
+{
+	"dependencies": {
+		"express": "*",
+		"redis": "2.8.0"
+	},
+	"scripts": {
+		"start": "node index.js"
+	}
+}
+```
+* redis is a lib for connecting redis -server to node
+* we also create an index.js file
+```
+const express = require("express");
+const redis = require("redis");
+
+const app = express();
+const client = redis.createClient();
+client.set('visits',0);
+
+app.get('/', (req,res)=> {
+	client.get('visits', (err,visits)=>{
+		res.send('Number of visits is '+ visits);
+		client.set('visits', parseInt(visits)+1);
+	});
+});
+
+app.listen(8081, ()=> {
+	console.log('Listening on port 8081');
+});
+```
+* we do not config redis client (ports etc) yet
+* data come from redis as strings we need to parse tehm to int  to make operations
+
+### Lecture 47 - Assembling a Dockerfile
+
+* we compose a dockerfile to compose the node app so essentially is same with what we wrote for simpleweb app (relative paths are different but result is same)
+```
+# specify base image
+FROM node:alpine
+## install some dependencies
+WORKDIR /app
+COPY package.json .
+RUN npm install
+COPY . .
+# default command
+CMD ["npm","start"]
+```
+* we build it `docker build -t achliopa/visits .`
+
+### Lecture 48 - Introducing Docker Compose
+
+* we run our newly created image of the node server of our app wiith `docker run achliopa/visits`
+* we get a bunch of errors as node cannot connect to redis. redis lib tries to connect to redis default port on the localhost '127.0.0.1:6379'
+* our first thought is to run a redis container.. we do it `docker run redis` no customization
+* even if we have now a running docker container with redis on our host if we rerun our node docker container it still cannot connect...
+* docker containers need to be set in the same docker network cluster to talk to each other
+* localhost in docker container refers to the alpine linux running instance in the container
+* to setup a network infrastructure for docker containers we have 2 options:
+	* use Docker CLI's Network Features
+	* use Docker Compose
+
+* using docker cli network feats to connect containers together
+* docker-compose is a separate toolused much more frequently to do the job.
+* it gets installed with docker on our machine 
+* docker-compose is a separate cli tool
+	* it is used to start-up multiple docker containers at the same time
+	* automates some of the long-winded arguments we are passing to docker run
+
+### Lecture 49 - Docker Compose Files
+
+* using docker-compose we use the same docker cli commands we use to run containers
+* we encode thes e commands into a YAML file in our project folder. the file is called 'docker-compose.yml'
+* cli commands are not cp'ed in docker-compose.yml. a sp[ecial syntax is used]
+* for our app the YAML file will be like:
+```
+# Here are the created containers for the build
+	redis-server
+		# make it using 'redis' image
+	node-app
+		# make it using the Dockerfile in the current dir
+		# map port 8081 to 8081
+```
+* we add a docker-compose.yml file in our project root
+* we start to implemetn it
+* first we set the yaml version `version: '3'`
+* then we list the services to be used. 
+```
+services:
+	redis-server:
+		image: 'redis'
+	node-app:
+		build: .
+		ports:
+			- "4001:8081"
+```
+* services means containers (type of)
+* with image: we specify an available imge to use (localy or in dockerhub
+* `build: .` means to search in the durrent dir for a Dockerfile and use it to build the image for the service-container
+* indentation is important for YAML files
+* - in YAML means an array
+* "8081:8081" => <port on our machine>:<port in container>
+
+### Lecture 50 - networking with Docker Compose
+
+* we still have put no config for the network infrastructure
+* actually we dont need it. because we pute them in teh same docker-compose file docker-compose will put them in the same network infrastructure (virtual vlan) without the need to open ports between them (SWEET!!)
+* as the services are in different containers aka vms. we need to add configuration in redis node lib createCLient() connection method in index.js
+* we dont know theys IPs in the virtual vlan so we refer them by service name.
+```
+const client = redis.createClient({
+	host: 'redis-server',
+	port: 6379
+});
+```
+
+### Lecture 51 - Docker Compose Commands
+
+* an equivalent of `docker run <image>` is `docker-compose up` which creates instances of all services specked in the YAML file
+* if we want to rebuild the images of the servicdes in the YAML and run them we use `docker-compose up --build` 
+* we run `docker-compose up` in our project folder.
+* the log says that a netrwork 'visits-default' is created with default drivers
+* this network joins images together
+* the images created are <project_folden_ame>_<service_name>_<number> eg. visits_redis-server_1
+* we run localhost:4001 in browser and our app works ok
+
+### Lecture 52 - Stopping Docker Compose Containers
+
+* we can run a container from an image without attaching to its STOUT with flag -d `docker run -d <image>` . it executed in teh background
+* with docker-compose we start multiple containers. is a pain to stop them one by one
+* we can stop all with `docker-compose down`
+* flag -d (run in background works also for docker-compose e.g `docker-compose up -d`)
+
+### Lecture 53 - Container Maintenance with Compose
+
+* what we do if a container started with compose crashes???
+* to test it we add a crash every time someone visits the toute '/crash'
+```
+const process = require('process');
+app.get('/crash',(req,res)=>{
+	process.exit(0);
+	});
+```
+* we start our containers and visit localhost:4001/crash.
+* our log says visits_node-app_1 exited with code 0
+* if we run `docker ps` we see that only visits_redis-server_1 runs
+
+### Lecture 54 - Automatic Container Restarts
+
+* we will look how to make docker-compose maintain and auto restart our containers
+* in our process.exit() call we pass 0 
+* in unix status codes 0 means that we exited but everything is OK, exit status code >0 means something went wrong
+* to make containers restart we will add 'restart policies' inside our docker-compose .yml file:
+	* "no": never attempt to restart this contatiner if it stops or crashes
+	* always: if this container stops 'for any reason' always attempt to restart it
+	* on-failure: only restart5 if the container stops with an error code
+	* unless-stopped: always restart unles we (the developers) forcibly stop it
+* no restart policy is the default one (if we dont specify otherwise)
+* in node-app service we add a new policy `restart: always`
+* the 'restart' plocy is per service
+* we test . our container stops and becomes green again.
+* when restarting docker reuses the stoped container so does not create a new instance
+* no is put in quotes 'no' because in YAML no is interpreted as false
+* in webapps we usually choose always
+* in a worker process we choose on-failure
+
+### Lecture 55 - Container Status with Docker Compose
+
+* currenlty we use docker cli to check contianer status with `docker ps`
+* the docker-compose equivalent is `docker-compose ps` it will return status of the containers in the docker-compose file in our current dir (project folder)
+* docker-compose commands need to go to docker-compose.yml file to execute. if we run it from the smae dir we dont need to specify the route to the docker-compose file
+
+## Section 6 - Creating a Production-Grade Workflow
+
+### Lecture 56 - Development Workflow
+
+* 
