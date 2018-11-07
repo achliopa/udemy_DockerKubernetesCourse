@@ -627,4 +627,189 @@ app.get('/crash',(req,res)=>{
 
 ### Lecture 56 - Development Workflow
 
+* we will see the entire workshop of buildng an app on docker and publishing it on a hosting service
+* we will go through the whole workflow: development -> testing->deployment cycle
+
+### Lecture 57 - Flow Specifics
+
+* we will create a github repo: a central point of coordination for the code we write and deploy
+* our github repo will have 2 branches: feature branch (development branch) and master branch (cclean working ready to deploy code)
+* we will pull the code from the features branch (like joining a dev tema)
+* we will make changes to the codebase
+* we will push back to feature branche (neven on MASTER)
+* we will make a Pull request from feature to master (to take all changes in features branch and merge them with master branch)
+* this pull request will trigger a series of actions:
+	* a workflow we will setup will take the app and push it to Travis CI (run tests)
+	* travis after tests pass will take the codebase and push it over to AWS hosting
+
+### Lecture 58 - Docker's Purpose
+
+* docker is not mentioned in the flow. is not needed
+* docker is a tool that will make some of these steps a lot easier
+
+### Lecture 59 - Project Generation
+
+* we will generate a project and wrap it up in a docker container. so no custom code
+* our app will be a React frontend
+* we should have node installed locally
+
+### Lecture 60 - More on Project Generation
+
+* we install globally the create-react-app tool (we have it) `npm install -g create-react-app` if we dont have it already
+* inside our projects folder we create a new app `create-react-app frontend`
+* we go in the project root folder
+
+### Lecture 61 - Necessary Commands
+
+* the 3 main commands we need are
+	* npm run start: starts up the dev server. For development use only
+	* npm run test: runs tests associated with the project
+	* npm run build: builds a production version of the application
+* we should run this command before running on host the scripts
+```
+echo 999999 | sudo tee -a /proc/sys/fs/inotify/max_user_watches && 
+echo 999999 | sudo tee -a /proc/sys/fs/inotify/max_queued_events && 
+echo 999999 | sudo tee -a /proc/sys/fs/inotify/max_user_instances && 
+watchman shutdown-server
+```
+* we run `npm start`
+* we run `npm run test`
+* we run `npm run build`
+* build produces a build/ folder inside static/ folder th e js file is our app packaged and ready for deployment together with the html file
+* start command launches the dev server
+
+### Lecture 62 - Creating the Dev Dockerfile
+
+* in the frontend project folder we create a new Dockerfile and name it Dockerfile.dev
+* this is only for development. (command will be npm run start)
+* later in the workflow we will add a Dockerfile named Dockerfile for production (CMD will npm run build)
+* we start building the dev dockerfile like our previous node app
+```
+FROM node:alpine
+
+WORKDIR '/app'
+
+COPY package.json .
+RUN npm install
+COPY . .
+
+CMD ["npm","run","start"]
+
+```
+* we need to run a dockerfile with a customname. we ll add the -f flag specifiyng the dockerfile to use `docker build -f Dockerfile.dev .`
+
+### Lecture 63 - Duplicating Dependencies
+
+* we come back into a problem we foresaw some sections ago...
+* we have already run 'npm start'  in our local machine so npm modulkes were installed in the project dir in a folder anmed node_modules. this folder is big
+* when we issued COPY . . in our dockerfile we copied this entire folder from local workingindir to the container. so build command issues a warning for size
+* we need fast build so we should ignor ethis folder as it is recreated in the container
+* a dumb solution is to delete the node_modules folder before buildign the image
+
+### Lecture 64 - Starting the Container
+
+* we cp the image id and  use it to run it with `docker run`
+* the log says we can view the app at localhost:3000 and on our machine at 172.17.0.2:3000
+* localhost:3000 does not work but 172.17.0.2:3000 works on our host machine browser
+* to access the app at localhost on our machine we need to map ports so we run `socker run -p  3000:3000 id`
+* we make a change. we mod the text in App.js. we refresh the page and no change in the app.
+* the change we did was in our local copy not in the container we need to rebuild or find an automated solution
+
+### Lecture 66 - Docker Volumes
+
+* volumes are a way of mapping a  local HD folder in the container
+* so far we have seen only how to copy data from localhost to container.
+* with volumes we set a reference in the container that maps back to the localhost
+* seting volumes is more difficult than COPY
+* the docker run command with volumes is like: `docker run -p 3000:3000 -v /app/node_modules -v $(pwd):/app <image_id>`
+	* -v /app/node_modules : put a bookmark on the node_modules folder
+	* -v $(pwd):/app : map the pwd (current dir) into the /app folder
+* the second switch is the one doing the mapping we want
+* the first switch dows not have a colon. if we omit it and run the command `docker run -p 3000:3000 -v $(pwd):/app e84a4e3ebcf6` we get a node error 
+
+### Lecture 67 - Bookmarking Volumes
+
+* why we saw the error? as node libs (node_modules) are not found. the libs are not found why? because container is mapping to our local dir and in our local dir we have deleted the node_modules
+*  to bookmark a volume (not map it to the local machine) we write the path in container but skip the colon and the first part (path on our machine) `-v /app/node_modules` so we make it a placeholder in teh container but dont map it to the localmachine
+* we  run the full command `docker run -p 3000:3000 -v /app/node_modules -v $(pwd):/app e84a4e3ebcf6` and app start instantly
+* now our local code changes get instantly reflected in the running app inside the docker container dev server. COOL!!!! (auto refresh is a create-react-app feat)
+
+### Lecture 68 - Shorthand with Docker Compose
+
+* writing docker cli command with volumes is very long....
+* we will use docker-compose to fix that.
+* docker-compose is legit even for single container  builds as it simplifies the commands
+* we assemble a dodker-compose.yml file for our project
+```
+version: '3'
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - /app/node_modules
+      - .:/app
+```
+* docker-compose up breaks.. it cannot find Dockerfile as the name is not the default
+
+### Lecture 69 - Overriding Dockerfile Selection
+
+* we tweak the docker-compose file to fix the issue
+* we mod the build: setting adding subsettings
+```
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+```
+* the dockerfile: setting does the trick
+
+### Lecture 70 - Do  We Need Copy?
+
+* we run `docker-compose up` 
+* app is running ok
+* we do a code change. app rebuilds and chrome refreesh. all ok
+* with volume mapping set we dont need the COPY . . in the Dockerfile.
+* we still need COPY package.json . as we need it to build the libs
+* if in the future we dont use docker-compose. then Dockerfile wont build without the COPY . . 
+so we opt on leaving it in
+
+### Lecture 71 - Executing Tests
+
+* we ll first run the tests on dev env and then will do it on Travis CI
+* we build our container with Dockerfile `docker build -f Dockerfile.dev .` we get the image id
+* we run the tests with `docker run <image_id> npm run test`
+* we see the test output but we cannot interact with the console. we need the -it flag for that
+
+### Lecture 73 - Live Updating Tests
+
+* we modify the test file App.test.js adding one more test. tests do not rerun automaticaly
+* even if we manually rerun tests the new test is NOT included
+* we have the usual problem we copied our folder at build time so any local change is not reflected in the container project dir
+* we can follow a docker-compose approach with volumes like in dev, setting maybe a test service looking in a test dockerfile with the test command
+* another approach is to bring up an instance with `docker-compose up`
+* we can attach to the existing container and run our test command
+* we open a second terminal and run `docker ps` to get the instance id.
+* we use it to run `docker exec -it <instance_id> npm run test`
+* changes now trigger rerun of tests
+* is a good solution but not optimal to mix compose with cli
+
+### Lecture 73 - Docker Compose for Running Tests
+
+* we will impleemnt the first approach adding in docker-compose a second service for testing
+```
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - /app/node_modules
+      - .:/app
+    command: ["npm","run","test"]
+```
+* to avoid adinga separate dockerfile we use the one for dev overriding the command withthe command property
+* it work but we get the test outputin the login interface. no styling and no interaction
+
+### Lecture 74 - Shortcomings on Testing
+
 * 
