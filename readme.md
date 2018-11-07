@@ -812,4 +812,24 @@ so we opt on leaving it in
 
 ### Lecture 74 - Shortcomings on Testing
 
+* we want the docker-compose service approach with the -it flag ability
+* with  docker compose we cannot set up a connection between our host terminal and teh test conteiner stdin
+* we ll open another terminal  and run `docker attach`  to the tests running ontainer. attach attaches the terminal to the stdin,stdout and stderr of the running contrainer
+* in the other terminal we run `docker ps` to see the ids then `docker attach  <id>` but it does not seem to work
+* we cannot do much more with this solution
+* to see why this happens we open a 3rd terminal and run `docker exec -it <container id> sh` for the testing container to open a shell. in the shell we run 'ps'
+* we see 1 npm and 2 node processes running... strange... the first is the script in the command we call and the 2 node ones the process that does the test
+* `docker attach` alwways attaches the host terminal with the std strams of the primary process and this is NOT the one doing the tests as we saw
+* so docker attach is not the way for us...
+* if we can memorize the exec vcommand it is the better one
+
+### Lecture 74 - Need for Nginx
+
+* there is a great difference with our app running in a dev environent and in production environment
+* in dev environemnt thereis a dev server running in the we container. the browser interacts withthe dev server that uses the build folder to serve content. namely the one html file (index.html) and the bundled up js application code
+* in prod enviornment we have the public files (index.html + optimized js bundle + any other files) but the dev server is missing. it is not appropriate for a production environment. it consumes far too many resources to handle code changes fast. in production our code base is stable
+* for production environment container we will use the [nginx](https://www.nginx.com/) server a lightweight ans stable production grade webserver
+
+### Lecture 75 - Multi-step Docker Bulds
+
 * 
