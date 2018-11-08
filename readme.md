@@ -1126,4 +1126,214 @@ COPY -from=builder /app/build/ /usr/share/nginx/html
 
 ### Lecture 95 - Single Container Deployment Issues
 
-* 
+* some issues with our first production grade app
+	* the app was simple . no outside dependencies
+	* our image was built multiple times
+	* how do we connect to a ddatabase from a container?
+* we would like to not do the build in an active running web server
+* the next level is to deploy to elasticbeanstalk a multicontainer app
+
+### Lecture 96 - Application overview
+
+* the app will be a super complicated fibonacci series calculator
+* user will enter the index in teh series on the web page
+* a backend process will calculate the fibonacci number for this index
+* the result will be presented on screen
+* also we will diplay the result in a list of items (together with previou sones)
+* and  alist of previous searched indexes
+
+### Lecture 98 - Application Architecture 
+
+* the development architecture of our app:
+	* browser hits nginx web server
+	* nginx will do some routing. it will see if the browser is trying to access a view (html pr js frontend file) it will route to the react server
+	* if the request is trying to access a backend API it will route to an ecpress node API server
+	* express api server will hit an imemory redis data storage or a postres db
+	* redis will exchange info with a worker process that will calculate the fibonacci series
+	* postgress will store the visited indexes
+	* redis will have teh calculated values
+* Redis: Stores all indices and calculated values as key value pairs
+* Postgres: stores a permanent list of indices that have been received
+* worker: watches redis for new indices. pull seach new index. calculates new value and then puts it back to redis
+
+### Lecture 99 - Worker Process Setup
+
+* we make a new project dir 'complex'
+* we make a new folder inside named 'worker'
+* we add a package.json file into worker folder
+```
+{
+	"dependencies": {
+		"nodemon":"1.18.3",
+		"redis": "2.8.0"
+	},
+
+	"scripts": {
+		"start": "node index.js",
+		"dev": "nodemon"
+	}
+}
+```
+* its going to be a node daemon talking to redis store
+* we add a js file in worker named index.js where we add `const keys = require('./keys');`
+* so all keys for connecting to redis will come from a separate js file named keys.js
+* keys will come as env params
+```
+module.exports = {
+	redisHost: process.env.REDIS_HOST,
+	redisPort: process.env.REDIS_PORT
+}
+```
+* our index.js complete
+```
+const keys = require('./keys');
+const redis = require('redis');
+
+const redisClient = redis.createClient({
+	host: keys.redisHost,
+	port: keys.redisPort,
+	retry_strategy: () => 1000
+});
+
+const sub = redisClient.duplicate();
+
+function fib(index) {
+	if (index < 2) return 1;
+		return fib(index-1) + fib(index-2);
+}
+
+sub.on('message', (channel,message)=>{
+	redisClient.hset('values',message,fib(parseInt(message)));
+});
+sub.subscribe('insert');
+```
+* we create two redis clients. one subscribes to events and listens to new messages. the other actually sets the value running a fibonacci recursive function (takes along time so that why we need a second client to not miss incoming events)
+* in the client we pass a callback to restart if connection is lost after a second
+
+### Lecture 100 - Express API Setup
+
+* we add a new folder 'server' inside the root folder
+* we add a package.json as well
+```
+{
+	"dependencies": {
+		"express": "4.16.3",
+		"pg": "7.4.3",
+		"redis": "2.8.0",
+		"cors": "2.8.4",
+		"nodemon": "1.18.3",
+		"body-parser": "*"
+	},
+	"scripts": {
+		"start": "node index.js",
+		"dev": "nodemon"
+	}
+}
+```
+* we add a keys.js file same as workers with reference to the env params with keys for redis and prostgres
+
+### Lecture 101 - Connecting to Postgress
+
+* we create a new file called index.js in 'server'
+* the file will host all the logig to:
+	* connect to redis
+	* connect to postgres
+	* broke information between them and the react app
+* cors will allow us to make cross origin requests
+* everytime we connect to a PostgresDB we need to create a table to host values
+
+### Lecture 102 - More Express API Setup
+
+* we add a connection to redis to pass the inserted value
+```
+const keys = require('./keys');
+
+//express app setup
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
+
+// postgres client setup
+const { Pool } = require('pg');
+const pgClient = new Pool({
+	user: keys.pgUser,
+	host: keys.pgHost,
+	database: keys.pgDatabase,
+	password: keys.pgPassword,
+	port: keys.pgPort
+});
+pgClient.on('error', ()=> console.log('Lost PG connection'));
+
+pgClient.query('CREATE TABLE IF NOT EXISTS values (number INT)')
+	.catch((err)=>console.log(err));
+
+//Redis Client Setup
+const redis = require('redis');
+const redisClient = redis.createClient({
+	host: keys.redisHost,
+	port: keys.redisPort,
+	retry_strategy: () => 1000
+});
+const redisPublisher = redisClient.duplicate();
+
+
+// express route handlers
+app.get('/', (req,res)=>{
+	res.send('Hi');
+});
+
+app.get('/values/all', async (req,res)=>{
+	const values = await pgClient.query('SELECT * FROM values');
+
+	res.send(values.rows);
+});
+
+app.get('/values/current', async (req,res)=>{
+	redisClient.hgetAll('values', (err,values) => {
+		res.send(values);
+	});
+});
+
+app.post('/values', async (req,res) => {
+	const index = req.body.index;
+
+	if(parseInt(index)>40){
+		return res.status(422).send('index too high');
+	}
+
+	redisClient.hset('values',index, 'Nothing yet!');
+	redisPublisher.publish('insert',index);
+	pgClient.query('INSERT INTO values(number) VALUES($1)',[index]);
+
+	res.send({working:true});
+});
+
+app.listen(5000, err => {
+	console.log('Listening');
+});
+```
+* we set a hash in redis with key index and value emty and we publish an event of type inser with the index
+* we add express routes and handlers
+
+### Lecture 103 - Generating the React App
+
+* in base project folder we run `create-react-app client`
+
+### Lecture 104 - Fetching Data in the React App
+
+* we want to implement  2 pages in the frontend. a dummy page and a full flejed form with a list
+* we create teh dumm page `OtherPage.js` in  src asimple functional component witha Link
+* we add the main page component in Fib.js in src
+* we implement the compoent as stateful class component
+* we add a lifecclemethod and 2 helpers to fetch data from backend and set state
+
+### Lecture 105 - Rendering Logic in the App
+
+* we add a render method
+* we add a form and event handler
+* we add 2 lists in helpers methods
+* when we get back data from postgres we get an arra of objects
