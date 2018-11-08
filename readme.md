@@ -993,3 +993,137 @@ script:
 * npm run test runs continuously and does not exit (travis will think as error)
 * to make sure the test run exits after it test we run `npm run test -- --coverage` instead
 * this option gives a coverage report
+
+### Lecture 84 - Automatic Build Creation
+
+* we push our code to github
+* travis ci is triggered. in dashboard we see that our tests pass (if we go to travis when tests are run we can see log)
+
+### Lecture 85 - AWS Elastic Beanstalk
+
+* our app is tested and ready to be deployed to AWS
+* we go to amazon aws and create an account
+* we go to dashboard
+* to deploy our project we will use elastic beanstalk
+* elastic beanstalk is the easiest way to start with production docker instances. it is best suited in single containers
+* we click create new application => give a name => create
+* we have a workspace and we are prompted to create an environment. we create one
+* we select web server environment => select
+* in Base Configuraton => Platform we select `Docker`
+* DO NOT FORGET TO SHUT DOWN THE INSTANCE AFTER FINISHING TO AVOID BILLING
+
+### Lecture 86 - More on Elastic Beanstalk
+
+* wehn setup is compete our docker-env is healthy and running
+* why we use elastic beanstalk?
+	* when our user tries to acces our app from hist browser the request will be handled by a Load Balancer in teh AWS ElastiBeanstalk Environment we created
+	* Load balancer will direct the request to a VM running Docker in the AWS Env. in that machine a docker container runs with our app
+	* The benefit  of elastic beanstalk is that it monitors traffic to our VM. when traffic is high Elastic beanstalk will start additional VMs (+containers) to handle traffic
+* So Elasticbeanstalk == Auto Scale of our app
+* our aws env workspace has the url of the env we can call vfrom browser4
+
+### Lecture 87 - Travis Config for Deployment
+
+* we mod the .travis.yml file to do the deployment after test pass
+* travis has preconfigured scripts to auto deploy for a number of known providers like digital ocean, aws ...
+* we also need to set in which region our app is tunnin int (it is a part of the url)
+* we put the name of the app
+* we put the env name
+* we put the bucketname (S3 bucket) where AWS puts our repo for the app. we go to S3 in AWS dashboard and look for the environments bucket (elasticbeanstalk.region.id)
+* we add the bucket_path which is the folder in the bucket where our app resides. typically is the app name we gave to teh Elasti beanstalk 
+* we said that we will triger the deploy (and test when master gets a new version) so we tell travis to deploy only when there is a push to master
+```
+deploy:
+  provider: elasticbeanstalk
+  region: "eu-central-1"
+  app: "docker-react"
+  env: "DockerReact-env"
+  bucket_name: "elasticbeanstalk-eu-central-1-448743904882"
+  bucket_path: "docker-react"
+  on:
+    branch: master
+```
+
+### Lecture 88 - Automated Deployments
+
+* we need to generate and give API keys to our EWS env to travis so that it is authorized to do the deployment
+* we go to AWS IAM service to set keys => users => add user => 
+* we set a name 'docker-react-travis-ci' and give it programmatic access only => next.permissions => attach existing policies directly
+* we select 'AWSElasticBeanstalkFullAccess ' => next => create user
+* we get a pair of keys an access key id and a secret access key
+* we have only one time acces to the secret key
+* we dont want to put these keys directly in teh .travis.yml as this is in a github public repo
+* we use enviroment features prvided by travis ci
+* we go to travis-ci => project => settings => environment variables
+* we enter access key and secretaccess key
+* accesskey: name: AWS_ACESS_KEY . do not dispaly it on build log => add
+* secret: name: AWS_SECRET_KEY do not dispaly it on build log => add
+* we add them to deploy script in .travis.yml
+```
+deploy:
+  provider: elasticbeanstalk
+  region: "eu-central-1"
+  app: "docker-react"
+  env: "DockerReact-env"
+  bucket_name: "elasticbeanstalk-eu-central-1-448743904882"
+  bucket_path: "docker-react"
+  on:
+    branch: master
+  access_key_id: $AWS_ACCESS_KEY
+  secret_access_key:
+    secure: "$AWS_SECRET_KEY"
+```
+* we will comit and push our changes to github to see the flow take action
+* we see in travis the log of the deploy
+
+### Lecture 89 - Exposing Ports Through the Dockerfile
+
+* in the travis build log we see. that deploy is done
+* we visit the elastibgeanstalk app url in browser but we dont see the app
+* also the state of the environemnt says degraded
+* we need to expose the port in elasticbeanstalk when we run the docker container in travis.yml
+* we do the expose after the first deploy (not sure why) and we do it in the production dockerfile in the prod phase. `EXPOSE 80`
+```
+FROM node:alpine as builder
+WORKDIR '/app'
+COPY package.json .
+RUN npm install
+COPY . .
+RUN npm run build
+FROM nginx
+EXPOSE 80
+COPY -from=builder /app/build/ /usr/share/nginx/html
+```
+* this command has no effect in local dev environment but it is meaningful in elastibeanstalk . as aws looks into the dockerfile for port mapping
+* we repeat commit push and see the deploy
+* travis work is about 4min
+
+### Lecture 91 - Workflow with Github
+
+* we will create the secont working branch 'features' so when we pull to master and merge it will trigger build
+* we checkout code to a new branch `git checkout -b feature`
+* we modify App.js => add => commit => push origin feature
+* this creates a new branch on github (feature)
+* we now have to do a pull request and merge
+* in github repo we see the new branch. on the right it has a  compare & pull request
+* on top it says we will attempt to take all in features and merge them in master branch
+* we leave a message and click create pull request.
+* an issue page is created for other developers to make comments
+* we see there ar no issue fro merge but travis has pending checks
+
+### Lecture 92 - Redeploy on Pull Request merge
+
+* after some time we see that ravis checks passed. travis attempted to merge our changes and run the tests which passed. so its safe to merge
+* as we merge it equalls a push to master so the whole test+deploy flow reruns
+
+### Lecture 93 - Deployment Wrapup
+
+* docker had nothing to do int eh deployment process. 
+* docker is a tool that eases up the deployment process
+* travis pipeline is reusable for other projects as well
+
+## Section 8 - Building a Multi-Container Application
+
+### Lecture 95 - Single Container Deployment Issues
+
+* 
