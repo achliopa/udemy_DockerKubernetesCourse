@@ -823,13 +823,173 @@ so we opt on leaving it in
 * so docker attach is not the way for us...
 * if we can memorize the exec vcommand it is the better one
 
-### Lecture 74 - Need for Nginx
+### Lecture 75 - Need for Nginx
 
 * there is a great difference with our app running in a dev environent and in production environment
 * in dev environemnt thereis a dev server running in the we container. the browser interacts withthe dev server that uses the build folder to serve content. namely the one html file (index.html) and the bundled up js application code
 * in prod enviornment we have the public files (index.html + optimized js bundle + any other files) but the dev server is missing. it is not appropriate for a production environment. it consumes far too many resources to handle code changes fast. in production our code base is stable
 * for production environment container we will use the [nginx](https://www.nginx.com/) server a lightweight ans stable production grade webserver
 
-### Lecture 75 - Multi-step Docker Bulds
+### Lecture 76 - Multi-step Docker Bulds
 
-* 
+* we ll look how to get nginx into our production container
+* we will add a seconf dockerfile in our project dit named 'Dockerfile' for our production image.
+* in our new Dockerfile we need to:
+	* use node:alpine as base
+	* copy the package.json file
+	* install dependencies (ISSUE: deps only needed to execute 'npm run build')
+	* run npm run build
+	* start nginx and serve build dir (ISSUE: how we install nginx?)
+* we look in docker hub for nginx. there are nginx image to host simple context (no node inside) by we need node to build
+* in looks like we need 2 diff base images
+* we will use a dockerfile with a `multistep build process` with 2 blocks of configuration
+	* Build Phase: Use npde:alpine => copy package.json file => install dependencies => run 'npm ruin build'
+	* Run Phase: use nginx => copy over the result of 'npm run build' => start nginx
+
+### Lecture 77 - Implementing Multi-Step Builds
+
+* the first step in our dockerfile looks like
+```
+FROM node:alpine as builder
+WORKDIR '/app'
+COPY package.json .
+RUN npm install
+COPY . .
+RUN npm run build
+```
+* steps start with `as <stagename>` in a FROM block.
+* we dont need volume as we wont work on the files after the container is prepared
+* we dont need a CMD as our container puprose is to build the project and exit
+* our build artifacts for production will be in /app/build in the container FS we need to copy it to the next step container
+* we implement the run phase
+* we dont need to name it. FROM block signamls the end of previous step (phase) and the start of a new
+```
+FROM nginx
+COPY --from=builder /app/build /usr/share/nginx/html
+```
+* in this step we specify the base image
+* we use the --from= flag to tell dockerfile that we want to copy files not from the defualt location (host) but from an other location as parameter we pass the previous step `--from=builder`
+* we copy the build artifacts fromt he outout folder in the builder container fs to the nginx container defualt location (according to nginx image documentation)
+* we dont neeed to set a CMD as nginx contianer primary command starts the nginx server
+
+### Lecture 78 - Running Nginx
+
+* we are ready to test with `docker build .` no need for -f flag as we use default dockerfile name
+* we run the container  `docker run -p 8080:80 <container_id>`
+* we see no output. but we visit browser at localhost:8080 annd see our app running
+
+## Section 7 - Continuous Integration and Deployment with AWS
+
+### Lecture 79 - Services Overview
+we ll look how to get nginx into our production container
+* we will add a seconf dockerfile in our project dit named 'Dockerfile' for our production image.
+* in our new Dockerfile we need to:
+	* use node:alpine as base
+	* copy the package.json file
+	* install dependencies (ISSUE: deps only needed to execute 'npm run build')
+	* run npm run build
+	* start nginx and serve build dir (ISSUE: how we install nginx?)
+* we look in docker hub for nginx. there are nginx image to host simple context (no node inside) by we need node to build
+* in looks like we need 2 diff base images
+* we will use a dockerfile with a `multistep build process` with 2 blocks of configuration
+	* Build Phase: Use npde:alpine => copy package.json file => install dependencies => run 'npm ruin build'
+	* Run Phase: use nginx => copy over the result of 'npm run build' => start nginx
+
+### Lecture 77 - Implementing Multi-Step Builds
+
+* the first step in our dockerfile looks like
+```
+FROM node:alpine as builder
+WORKDIR '/app'
+COPY package.json .
+RUN npm install
+COPY . .
+RUN npm run build
+```
+* steps start with `as <stagename>` in a FROM block.
+* we dont need volume as we wont work on the files after the container is prepared
+* we dont need a CMD as our container puprose is to build the project and exit
+* our build artifacts for production will be in /app/build in the container FS we need to copy it to the next step container
+* we implement the run phase
+* we dont need to name it. FROM block signamls the end of previous step (phase) and the start of a new
+```
+FROM nginx
+COPY --from=builder /app/build /usr/share/nginx/html
+```
+* in this step we specify the base image
+* we use the --from= flag to tell dockerfile that we want to copy files not from the defualt location (host) but from an other location as parameter we pass the previous step `--from=builder`
+* we copy the build artifacts fromt he outout folder in the builder container 
+* we have now all set up om the docker part of the deployment process
+* we will see how to use the containers we have prepared in our workflow
+* we will use in our workflow : github, Travis CI, AWS
+
+### Lecture 80 - Github setup
+
+* our flow on github:
+	* create github repo
+	* create local git repo
+	* connect local git to github remote
+	* push work on github
+* we create a new repo on github: docker-react
+* we set it to public (private wont do the trrick...)
+* working with a private repo is possible we just have to add keys on the servers that use our codebase
+* we start a local repo in frontend and push it up to github (at docker-react repo)
+* as we use a main gihub repo for our course we nest this a s a submodule
+```
+git submodule add git@github.com:achliopa/docker-react myCode/docker-react
+```
+* now in order to commit and push to the subrepo we need to do it in the master one
+* if we need to update changes we do a pull inside the folder or outside `git submodule update --init --recursive`
+* also when we clone our outer repo if we want to include the submodule we use `git clone --recursive git@github.com:achliopa/udemy_DockerKubernetesCourse.git`
+
+### Lecture 81 - Travis CI setup
+
+* we ll setup travis CI on github. travis works as follows
+	* whenever we puch code on our github repo travis is triggered
+	* travis does its work
+* travis can test, deploy
+* we will use it for test and deployment (on AWS)
+* we setup travis-ci for our repo
+* we go to  we signin/up and grant access
+* we go in the dashboard
+* in our avatar pro we see our github repos. we enable it for docker-react
+* our repo is added in the list in the dashboard
+* we see our repo
+
+### Lecture 82 - Travis YML file configuration
+
+* we need to direct Travis to test our code when we push
+* we add a config file .travis.yml in our root project dir:
+* in the file we need to:
+	* tell travis we need a copy of docker running
+	* build our image using Dockerfile.dev (our test container is set thjere)
+	* tell travis to run our test suite
+	* tell travis how to deploy our code to AWS
+* our .travis.yml is
+```
+sudo: required
+services:
+	- docker
+
+before_install:
+	- docker build -t achliopa/docker-react -f Dockerfile.dev .
+```
+* every time we run docker in travis ci we need superuser permissions `sudo: required`
+* we need to tell travis on teh services we will use (docker). travis will run docker
+* 'before_install' sets what will run before our tests run (test setup)
+* first we need to create the test container image `- docker build -t achliopa/docker-react -f Dockerfile.dev .`
+* we need the generaated id for the next command. we add a tag to use it later
+* we can add a simple tag as its going to be used only in the travis ci temporary vm
+
+### Lecture 83 - A Touch More Travis Setup
+
+* we need to tell travis what to do with our code (test)
+```
+script:
+	- docker run achliopa/docker-react npm run test -- --coverage
+```
+* if travis gets a result other that 0 from the scripts it will assume our scripts (test) failed
+* every time we run tests on travis it assumes that test run and exit automatically
+* npm run test runs continuously and does not exit (travis will think as error)
+* to make sure the test run exits after it test we run `npm run test -- --coverage` instead
+* this option gives a coverage report
