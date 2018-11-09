@@ -25,6 +25,14 @@ class Fib extends Component {
 		});
 	}
 
+	handleSubmet = async (event) => {
+		event.preventDefault();
+		await axios.post('/api/values', {
+			index: this.state.index
+		});
+		this.setState({index: ''});
+	};
+
 	renderSeenIndexes() {
 		return this.state.seenIndexes.map(({number}) => number).join(', ');
 	}
@@ -40,9 +48,12 @@ class Fib extends Component {
 	render() {
 		return(
 			<div>
-				<form>
+				<form onSubmit={this.handleSubmit}>
 					<label>Enter your index:</label>
-					<input />
+					<input 
+						value={this.state.index}
+						onChange={event => this.setState({index: event.target.value})}
+					/>
 					<button>Submit</button>
 				</form>
 				<h3>Indices I have seen:</h3>
@@ -53,3 +64,5 @@ class Fib extends Component {
 		);
 	}
 }
+
+export default Fib;

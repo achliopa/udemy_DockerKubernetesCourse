@@ -1329,11 +1329,94 @@ app.listen(5000, err => {
 * we create teh dumm page `OtherPage.js` in  src asimple functional component witha Link
 * we add the main page component in Fib.js in src
 * we implement the compoent as stateful class component
-* we add a lifecclemethod and 2 helpers to fetch data from backend and set state
+* we add a lifecylemethod and 2 helpers to fetch data from backend and set state
 
 ### Lecture 105 - Rendering Logic in the App
 
 * we add a render method
 * we add a form and event handler
 * we add 2 lists in helpers methods
-* when we get back data from postgres we get an arra of objects
+* when we get back data from postgres we get an array of objects
+```
+import React, { Component } from 'react';
+import axios from 'axios';
+
+class Fib extends Component {
+	state = {
+		seenIndexes: [],
+		values: {},
+		index: ''
+	};
+
+	componentDidMount() {
+		this.fetchValues();
+		this.fetchIndexes();
+	}
+
+	async fetchValues() {
+		const values = await axios.get('/api/values/current');
+		this.setState({ values: values.data });
+	}
+
+	async fetchIndexes() {
+		const seenIndexes = await axios.get('/api/values/all');
+		this.setState({
+			seenIndexes: seenIndexes.data
+		});
+	}
+
+	handleSubmet = async (event) => {
+		event.preventDefault();
+		await axios.post('/api/values', {
+			index: this.state.index
+		});
+		this.setState({index: ''});
+	};
+
+	renderSeenIndexes() {
+		return this.state.seenIndexes.map(({number}) => number).join(', ');
+	}
+
+	renderValues() {
+		const entries = [];
+
+		for (let key in this.state.values) {
+			
+		}
+	}
+
+	render() {
+		return(
+			<div>
+				<form onSubmit={this.handleSubmit}>
+					<label>Enter your index:</label>
+					<input 
+						value={this.state.index}
+						onChange={event => this.setState({index: event.target.value})}
+					/>
+					<button>Submit</button>
+				</form>
+				<h3>Indices I have seen:</h3>
+				{this.renderSeenIndexes()}
+				<h3>Calculated Values:</h3>
+				{this.renderValues()}
+			</div>
+		);
+	}
+}
+
+export default Fib;
+```
+
+### Lecture 107 - Routing in the React App
+
+* we ll use react-router-dom lib to route between the 2 pages (React componetns) we hav eimplemented
+* we add `"react-router-dom": "4.3.1"` in package.json dependencies and `"axios": "0.18.0"`
+* in App.js we add the BrowserRouter and Route and implement basic router
+* we add 2 links in the header
+
+## Section 9 - "Dockerizing" Multiple Services
+
+### Lecture 110 - Dockerizing a React App - Again!
+
+* 
