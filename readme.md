@@ -1419,4 +1419,53 @@ export default Fib;
 
 ### Lecture 110 - Dockerizing a React App - Again!
 
-* 
+* we will make a Dockerfile for each process we have implemented (React App , Express Server, Worker Daemon)
+* the dockerfiles will be for development not production
+* again like before we dont want npm install to run whenever we modify the code base. only when we mod the package.json
+* so we will do what we did in the single service application dev dockerfile in a previous section
+	* xopy over package.json
+	* run npm install
+	* copy over all else
+	* use docker compose to set a volume to 'share files' between local and container
+* all our component folders are similar (node based apps) and we add the dockerfile inside each one
+* in client fodler we add Dockerfile.dev
+```
+FROM node:alpine
+WORKDIR '/app'
+COPY ./package.json ./
+RUN npm install
+COPY . .
+CMD ["npm","run","start"]
+```
+* in client folder we run `docker build -f Dockerfile.dev .` to build our client image
+* we add Dockerfile.dev files for server and worker (identical). we use npm run dev to start nodemon so that we listen to code changes as we do changes to code base
+```
+FROM node:alpine
+WORKDIR "/app"
+COPY ./package.json ./
+RUN npm install
+COPY . .
+CMD["npm","run","dev"]
+```
+* we build our custem images and run them `docker run <id>`
+
+### Lecture 112 - Adding Postgres as a Service
+
+* we ll assempble a docker-compose file to connect and build/run our iamges easily
+	* postgres: which image from hub?
+	* redis: which image from hub?
+	* server: specify build, volumes, env variables
+	* later add worker and client
+* volumes we need to speed up devleopment 
+* env are needed for process.env params
+* in project root we add the file
+* start of file
+```
+version: '3'
+services:
+    postgres:
+      image: 'postgres:latest'
+```
+* in docker run of postgres image we can spec the password to use as a param
+
+### Lecture 113 - Docker-Compose Config
