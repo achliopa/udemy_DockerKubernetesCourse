@@ -1641,4 +1641,66 @@ COPY ./default.conf /etc/nging/conf.d/default.conf
 
 ### Lecture 123 - Production Multi-Container Deployments
 
-* 
+* our workflow for a single container workflow was
+	* push code to github
+	* travis autmatically pulls repo
+	* travis builds an image , tests code
+	* travis pushes code to ews EB
+	* EB builds image, deploys it
+* building our project in EB (prod env) was suboptimal as production server should reserve its power to serve content not do builds
+* our modified optimized flow for multicontainer deployment wiil be
+	* push code to github
+	* travis automatically pulls repo
+	* travis builds a test image, tests code
+	* travis builds a test image, tests code
+	* travis builds prod images
+	* travis pushes build prod images to dockerhub
+	* travis pushes project to AWS EB
+	* EB pulls images from Docker Hub, deploys
+* dockehub allows us to have our own personal images online
+
+### Lecture 124 - Production Dockerfiles
+
+* worker and server dockerfiles for production are same as dev just the command changes
+* nginx prod dockerfile is the same as dev
+* an optimization for nginx would be to remove the roting of websockets in default.conf creating a production version of it as in production there is no devserver
+
+### Lecture 125 - Multiple Nginx Instances
+
+* we move to client to build its production Dockerfile. we cp the prod dockerfiel from teh single container application of previous section
+```
+FROM node:alpine as builder
+WORKDIR '/app'
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+FROM nginx
+EXPOSE 80
+COPY --from=builder /app/build/ /usr/share/nginx/html
+```
+* then we did a multi step build building and then running an nginx image cping files from build phase to serve
+* in our single container deployment AWS EB was running an nginx  server with production files serving content at port 80.
+* now things will be different. with multicontainer env. in production AWS EB will
+	* run multiple containers
+	* nginx router will listen at port 80
+	* nginx router will proxy / calls to port 3000 where another nginx server will serve production artifcts of react app
+	* nginx will proxy /api calls to port 5000 where the express API server will serv JSON content
+	* all will run on the same machine (EB) that can scale transparently
+* we could use one nginx server to do both. route and serve. with using 2 we gain on flexibility later on
+
+### Lecture 126 - Altering Nginx listen port
+
+* we add an nginx subfolder in client. in there we add a default.conf config file
+* we need to change the listening port to 3000. to do so we mod the nginx server config
+```
+server {
+	listen 3000;
+
+	location / {
+		root /usr/share/nginx/html;
+		index index.html index.htm;
+	}
+}
+```
+* we set the / route serving content from nginx default location
