@@ -1469,3 +1469,176 @@ services:
 * in docker run of postgres image we can spec the password to use as a param
 
 ### Lecture 113 - Docker-Compose Config
+
+* in the same way we add redis
+```
+    redis:
+      image: 'redis:latest'
+```
+* we add server service specifying the build (file and folder)
+* also we add volums to map dev folder to container. aslo we skip node_modules so we dont overwrite it
+* all forders are relative to the project root folder
+```
+    server:
+      build: 
+        dockerfile: Dockerfile.dev
+        context: ./server
+      volumes:
+        - /app/node_modules
+        - ./server:/app
+```
+
+### Lecture 114 - Environment Variables with Docker Compose
+
+* we add another section to the server config in compose file to set environment variables
+* there are 2 ways to set env variables in a docker compose file.
+	* variableName=value : sets variable to value in the container at 'run time'. the value is not stored in the image
+	* variableName; setsa variable in the container at 'run time' value is taken from host machine
+* the params are (we look them in dockerhub image docs)
+* hostname in docker viurual private network is the docker-compose service name
+```
+      environment:
+        - REDIS_HOST=redis
+        - REDIS_PORT=6379
+        - PGUSER=postgres
+        - PGHOST=postgres
+        - PGDATABASE=postgres
+        - PGPASSWORD=postgres_password
+        - PGPORT=5432
+```
+
+### Lecture 115 - The Worker and Client Services
+
+* in the same way we add worker and client config
+```
+    client:
+      build: 
+        dockerfile: Dockerfile.dev
+        context: ./client
+      volumes:
+        - /app/node_modules
+        - ./client:/app
+    worker:
+      build: 
+        dockerfile: Dockerfile.dev
+        context: ./worker
+      volumes:
+        - /app/node_modules
+        - ./worker:/app
+      environment:
+        - REDIS_HOST=redis
+        - REDIS_PORT=6379
+```
+* we have note added port mapping.. this is because nginx exposes the whole to the outside world
+* so we will add nginx service and dd there the port mapping
+
+### Lecture 116 - Nginx Path Routing
+
+* in our previous project nginx was used in production environment to host hte production built files for serving our content
+* in this project nginx will exist in the developlemnt env (to do routing)
+	* our browser will request content like index.html and the included bundle.js these requsests go to React server
+	* after frontside rendering browser will request data from API to feed the app
+	* browser will request /values/all and balues/current content from Express API server
+* we need an infrastructure to do top level routing... this will be done by nginx
+* in our code client side app (react) requests API data with Axios from /a[i/values/* routes
+* our backend API serves them in /values/* routes
+* nginx will have a simple job. 
+	* when request has / will direct to react server
+	* wehen request has /api/ will redirect to the express server
+* an obvious question is why we dont assigne different ports to exress and react server and make this routing based on port to avoid nginx
+* in production env we want things transparent and avoid using ports in our urls
+* also ports might be used or changed
+* nginx after routing /api/ chops off api and passes the rest to the express APi
+
+### Lecture 117 - Routing with Nginx
+
+* to setup nginx and give it a set of routing rules we will create a file called default.conf
+* default.conf adds configuration rules to Nginx:
+	* tell nginx that there is an 'upstream' server at client:3000
+	* tell nginx that there is an 'upstream' server at server:5000
+	* tell nginx to listen on port 80
+	* if anyone comes to '/' send them to client upstream
+	* if anyone comes to '/api' send them to server upstream
+* Upstream servers are inaccessible without nginx
+* we mention client:3000 and server:5000 as in out index.js we set up our servers to listen to these ports inm tehir respective hosting or virtual machoines or alpine linux container  os.
+* client and server hostnames are not random but are the service names or the running docker containers in our docker compose virtual network
+* we add a new project subfolder named 'nginx' and inside we add the default.conf file
+```
+upstream client {
+	server client:3000;
+}
+
+upstream api {
+	server api:5000;
+}
+
+server {
+	listen 80;
+
+	location / {
+		proxy_pass http://client;
+	}
+
+	location /api {
+		rewrite /api/(.*) /$1 break;
+		proxy_pass http://api
+	}
+}
+```
+* server is a reserved word in ngingx conf so we rename our server service as api
+* routing is done using the location rules and proxy_pass directive
+* rewrite is using regex to chop off the /api part of the path.
+* break means skip any further rule and pass on
+* to get default.conf in the nginx container we will the Dockerfile command COPY
+
+### Lecture 118 - Building a Custom Nginx Image
+
+* according to nginx image docs in dockerhub we need to copy the config file in /etc/nginx/conf.d/folder in the image
+* if a file exists with the same name it will be overwritten
+```
+FROM nginx
+COPY ./default.conf /etc/nging/conf.d/default.conf
+```
+* we add nginx as a service in the compose file
+```
+    nginx:
+      restart: always
+      build:
+        dockerfile: Dockerfile.dev
+        context: ./nginx
+      ports:
+        - '3050:80'
+```
+* we do port mapping ans add restart policy to always. nginx is the dorr to our app , is lightweight so it should run anytime
+
+### Lecture 119 - Starting Up Docker Compose
+
+* our first `docker-compose up` is likely to fail. why?
+	* as there are dependencies of services to others (e.g redis) there is no guarantee that these will be up and running before they will be required
+* in that case we kill it  'ctrl+c' and force rebuilt `docker-compose up --build`
+
+### Lecture 121 - Troubleshooting Startup Bugs
+
+* our app loads but we get websocket error in console
+* this is because everytime react up boots up it needs an active websocket conenction to the dev server
+* when we enter a val our app does not rerender we need to refresh to see the result
+
+### Lecter 122 - Opening Websocker Connections
+
+* nginx is not setup to pass through websocket connections so our app does not rerender
+* we need to add one more routing rule to default.conf. our console error shows the websocket connection is done on /sockjs-node/.
+```
+	location /sockjs-node {
+		proxy_pass http://client;
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection "Upgrade";
+	}
+```
+* we rebuild compose and see it working
+
+## Section 10 - A Continuous Integration Workflow for Multiple Containers
+
+### Lecture 123 - Production Multi-Container Deployments
+
+* 
