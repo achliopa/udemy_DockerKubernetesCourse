@@ -1731,3 +1731,5 @@ COPY --from=builder /app/build/ /usr/share/nginx/html
 	* delete complex folder from course
 	* commit and push to course repo
 	* add a submodule to course local repo. in couser root folder run `git submodule add git@github.com:achliopa/multi-docker myCode/complex`
+	* add , commit push master repo
+	
