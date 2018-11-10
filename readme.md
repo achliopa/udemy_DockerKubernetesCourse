@@ -1732,4 +1732,55 @@ COPY --from=builder /app/build/ /usr/share/nginx/html
 	* commit and push to course repo
 	* add a submodule to course local repo. in couser root folder run `git submodule add git@github.com:achliopa/multi-docker myCode/complex`
 	* add , commit push master repo
-	
+* we navigate to travis ci to link to our new multi-docker repo
+* in our dashboard we sync account and enable travis in our new repo
+* we need a .travis.yml file
+
+### Lecture 130 - Travis Configuration Setup
+
+* in the travis file we will:
+	* specify docker as dependency
+	* build test version of react project (we could add tests for worker and api server)
+	* run tests
+	* build prod versions of all projects
+	* push all to docker hub
+	* tell Elastic Beanstalk to update
+```
+sudo: required
+services:
+  - docker
+
+before_install:
+  - docker build -t achliopa/react-test -f ./client/Dockerfile.dev ./client
+
+script:
+  - docker run achliopa/react-test npm test -- --coverage
+
+after_success:
+  - docker build -t achliopa/multi-client ./client
+  - docker build -t achliopa/multi-nginx ./nginx
+  - docker build -t achliopa/multi-server ./server
+  - docker build -t achliopa/multi-worker ./worker
+```
+
+### Lecture 131 - Pushing Images to Docker Hub
+
+* we need to login to  docker-cli
+* we ll put the docker login command in .treavis.yml hidding our username and password from common view (will be passed as travis env params)
+* travis -> muulti-docker project -> settings we add environment vars. DOCKER_ID DOCKER_PASSWORD
+* add login to .travis.yml `- echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_ID" --password-stdin` we retreive the password from env params and pass it to stdin sending it to the next command with pipe. next command uses password from stdin
+* being logedin we just have to push our images to dockerhub (our account)
+```
+  # takes those images and push them to docker hub
+  - docker push achliopa/multi-client
+  - docker push achliopa/multi-nginx
+  - docker push achliopa/multi-server
+  - docker push achliopa/multi-worker
+```
+* we need to push to github to ttrigger travis to test our flow  so far (should see images on dockerhub). its a success
+
+## Section 11 - Multi-Container Deployments to AWS
+
+### Lecture 133 - Multi-Container Definition Files
+
+* 
