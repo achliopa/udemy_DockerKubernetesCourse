@@ -1783,4 +1783,205 @@ after_success:
 
 ### Lecture 133 - Multi-Container Definition Files
 
-* 
+* we ll pull the images from dockerhub and push them to AWS EB for deploy
+* in single container app we puched the project with the dockerfile to EB. EB sees thatwe have adockerfile and builds and runs the image.
+* in our multicontainer app we have multiple containers with each one having its Dockerfile
+* AWS EB doens not know which one to run
+* we ll add one more AWS specific config file in our project teling AWS how to run our project 'Dockerrun.aws.json' this file looks like docker-compose.yml
+* docker-compose is meant for dev environments. it defines how to build images and sets their interconnections
+* dockerrun does not need to build images. images are already build. we have container definitions secifying the images to use and where to pull them from
+
+### Lecture 134 - Docs on COntainer Definitions
+
+* elastic beanstalk does not know how to run containers
+* when we tell AWS EB to host our containers it uses Amazon Elastic Container Service (ECS)
+* in ECS we create files called 'task definitions' with instructions on how to run a single container. these files are similar to the *container definitions* we will write in 'Dockerrun.aws.json'
+* to customize Dockerrun file we need to read about  [AWS ECS task definitions](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html) -> task definition parameters -> container definitions
+
+### Lecture 135 - Adding Container Definition in Dockerrun
+
+* we add 'Dockerrun.aws.json' in project root
+* we specify its version
+* we add our containeDefinitions as an arra of config objects
+* in the config obj we specify the name of the container, 
+* we spec the image to use (AWS ECS understands from syntax we are refering to dockerhub so it pulls it from the dockerhub)
+* we spec the hostname for the running container in the app virtual private network in the EB.
+* we mark if the container is essential. at least one showuld be marked as essential. if it is essential and it crashes all others will be stopped
+```
+{
+	"AWSEBDockerrunVersion": 2,
+	"containerDefinitions": [
+		{
+			"name": "client",
+			"image": "achliopa/multi-client",
+			"hostname": "client",
+			"essential": false,
+			
+		}
+	]
+}
+```
+
+### Lecture 137 - Forming Container Links
+
+* for nginx we dont add hostname. no container in the group needs to look out and connect to it. same holds for worker
+* nginx is essential as if it fail noone can access the app
+* nginx needs portmapping as in  compose as it is the  connection to the outside world
+* portmapping is set as an array of mappings
+```
+			"portMappings": [
+				{
+					"hostPort": 80,
+					"containerPort": 80
+				}
+			]	
+```
+* in nginx we add one more param 'links' to set the link to the other containers in the group
+* in dockercompose interconnection between containers was set automatically based on their names(hostnames) but in AWS ECS it needs to be se explicitly `"links": ["client","server"]`
+* links in container definitions need to be specified in one end (the comm originator) as links are unidirectional. 
+* links use the container name not the hostname
+* it is recommended to validate json using online tools before deploy'
+
+### Lecture 138 - Creating the EB environment
+
+* we go to AWS => ElasticBeanstalk => create new app => give name (multi-docker) => create => actions => create environment => web server env => select => base config, platform , preconfig platform, choose 'Multi-container Docker' => click create env
+* we will use 2 official images from dockerhub for data storage (postgrs and redis)
+* we gave specified nothing on .travis.yml or dockerrun file for them
+* this is a discussion of architecture on seeting data storage inside of containers
+
+### Lecture 139 - Managed Data Service Providers
+
+* in dev environment we run the data services as containers
+* in production environment:
+	* all our business logic(API server, worker daemon, nginx router and nginx web content server with react prob build files) will run in AWS EB(elastic beanstalk) instance.
+	* Redis will run in AWS Elastic Cache
+	* Postgres DB will run in AWS Relational Database Service (RDS)
+* why use external dedicated AWS services for data storage?
+	* we use  general data services not docker specific
+	* AWS Elastic Cache: automaticaly creates and maintains (production grade) Redis instances for us, very easy to scale, built in logging and maintenance, better OTB security than our custom logic, easy to migrate
+	* AWS realtional Database Service (RDS): same advanatages like fo AW Elastic Cache + automatice rollbacks and backups
+* Automatic DB backups are not easy. auto rollback to backups on failure is not trivial to implement on your own
+* in a next project will use Postgres and Redis in containers in aproduction environment
+
+### Lecture 140 - Overview of AWS VPC and Security Groups
+
+* we want to be able to connect our instance in the AWS EB Instance to the AWS RDS instance (postgres) and AWS EC Instance (Redis). By default these serices can't talk to each other
+* we need to set the connection ourselves.
+* when we created our EB instance it was created in a specific region (data center) 'eu-central-1'
+* in each of these regions we get a VPC (Virtual Private Cloud). a private network so that any service or instance we create is isolated only to our account.
+* so when we create an instance only our account has access to that
+* VPC is used to apply security rules and to connect different services we create on AWS
+* we get one VPC by default created for our account in any region (AWS data center)
+* our instances are assigned to the VPC nearest to our local ip unless programmatically directed otherwise
+* from services dashboard we go to VPC. => we click your vpcs and see our default vpc. we note thte id
+* we switch to another region and see our default vpc for that region. it has a different id
+* after starting our services we have them running (by default) to our default vpc of our closest region
+* to make our different services talk to each other inside the vpc we need to set a 'security group' (Firewall Rules)
+	* allow any incoming traffic on Port 80 from any IP
+	* allow traffic on port 3010 from IP 172.0.40.2 (custom rules)
+* our EB instance has a security group created that accepts conenction on prot 80. beign in ourdefault region VPC we can click security groups and see the rules for our running EB instance. in inbound rules er see  it is accepting http requests in port 80- from any source, outbound rules allow anything
+* TO allow intercom between our services we will create a new security group and attach all thre AWS instances (EB,EC,RDS) adding a rule that says allow any communication between instances that belong to this security group
+
+### Lecture 141 - RDS Database Creation
+
+* (being in our default region) we search for rds in services => close modal => click create database => postgreSQL => (click enable options for free tier usage) => next => we leave all default only set master username and password same as our dockercompose values and db instance identifier 'multi-docker-postgres'. if we choose another usr/password we need to pass the m in config file => next => we put the instance in our default vpc leave the rest default => we set a db name (we use the same as in dockercompose file) => leave the rest default and click create db
+
+### Lecture 142 - ElasticCache Redis Creation
+
+* in our default region => services => ElastiCache => Redis => Create => (We get a cluster) => Set up some settings
+	* name: multi-docker-redis
+	* node type: => t2 => cache.t2.micro
+	* replicas: none
+	* subnet group name : redis-group
+	* vpc id : our defualt
+	* subnets : select all
+* click create
+
+### Lecture 143 - Creating a Custom Security Group
+
+* we go back to vpc => security groups (we have one more created by rds) => we create  a new one => name it and add description , use default vpc =. create
+* we see ti  in the list => we go down to rules (we need to allow comm inside this group) => inbound Rules => add rule (type:custom tcp, protocol: tcp, port range: 5432-6379, source: sg-dsds|multi-docker) => save
+* we need to assign this security roup to services
+
+### Lecture 144 - Applying Security Groups to Resources
+
+* first we do EC (redis) +> serivces => elasticcache => redis => select instance => modify => vpc groups edit => select also multi-docker => save => modify
+* do rds => service => rds => instances => select our postgres instance => scroll down to details section =>  modify => network and security => security group => add multi-docker => continue +> select apply immediately in scheduling => modify db instance
+* do eb => services => elasticbeanstalk => our instance => configuration => instances => modify => ec2 security groups => add multi-docker => apply
+
+### Lecture 145 - Setting Environment variables
+
+* we need to set a number of environment variable in our custom inages production config files to connect to the outer services in other AWS instances like we did in compose file for dev environment
+* we go to services => eb => our instance => configuration => software => modify => environment properties => add env properties (not hidden) . if we  want them hidden we hsould try AWS secrets manager
+	*  REDIS_HOST: our elastic instance url (elasticcache => our instance => primary endpoint)
+	* REDIS_PORT: 6379
+	* PGUSER: <user we set in RDS config>
+	* PGPASSWORD: <passwoird we set in RDS configuration>
+	* PGHOST: go to services => RDS => instances => our instance => connect +> get enpoint and cp it
+	* PGPORT  5432
+	* PGDATABASE: the anme we gave to the db at rds configuration
+* apply
+* In Elastibeanstalk the env variables we set are added to all containers created inside
+
+### Lecture 146 - IAM Keys for deployment
+
+* our production images are now on dockerhub. we will tell AWS EB (from travis yaml file) to go and pull the images and deploy them
+* we ll sent all the project to EB but the only file it needs to do the deploy is the Dockerrun.aws.json
+* in our signel container travis.yml file  we added deploy configuration for EB and a set of keys to allow travis to get access to  EB and copy files (we did not expose them travis pulled them from his env vars we set)
+* we need new keys for our new instance. we go to services => IAM => USERS => add user ->name it, set programatic access => next => attach existing policies directly => filter by beanstalk =?> select all => create. 
+* cp access key and secret to travic ci repo(multi-docker)env variables (settings) as AWS_ACCES_KEY and AWS_SECRET_KEY
+
+### Lecture 147 - Travis Deploy Script
+
+* we finish off travis.yml adding the deploy config (almost identical to the single container app)
+* for bucket name and path we go to services => S3 => (find bucket)
+```
+deploy:
+  provider: elasticbeanstalk
+  region: eu-central-1
+  app: multi-docker
+  env: MultiDocker-env
+  bucket_name: elasticbeanstalk-eu-central-1-448743904882
+  bucket_path: docker-multi
+  on:
+    branch: master
+  access_key_id: $AWS_ACCESS_KEY
+  secret_access_key:
+    secure: $AWS_SECRET_KEY
+```
+* we commit and push to github our project to trigger build test and deploy
+
+### Lecture 148 - Container Memory Allocations
+
+* with a successful deploy in travis we got o aws ed instance (we see an error)
+* it comlains  that we didnt specify an option called memory. we need this when we use dockerrun and multiple containers
+* eb needs it to know how much memeory to allocate in each container. we add a mem option to each container definition in dockerrun file
+* we add `"memory": 128` to all 4.
+* we commit and push to master on github to trigger the build
+
+### Lecture 149 - Verifying Deployment
+
+* if sthing wernt wrong and EB instance is not healthy goto Logs => request logs (last 100lines)
+logs are for all containers running
+* we hit the url and OUR APP IS RUNNINGGG!!!
+
+### Lecture 150 - A quick App Change
+
+* we do a small change and  see redeploploy
+
+
+### Lecture 152 - Cleaning UP AWS Resources
+
+* aws EB -> delete application
+* delete rds no snapshot
+* delete redis
+* go to vpc -> security groups -> multi-docker -> security groups action -> delete
+* delete iam users
+
+## Section 12 - Onwards to Kubernetes!
+
+### Lecture 153 - The Why's and What's of Kubernetes
+
+* in our previous lulti container application we had 4 different containers running in the same Elastic beanstalk Instance at the same time
+* scaling this app would force us look into themore resource intencive service the worker. we would like to spawn more instances of it to handle load
+* scaling strategy for elastic beanstalk  creates more machines or more copies of elasticbeanstalk instance. in that sense
