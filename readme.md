@@ -1985,3 +1985,75 @@ logs are for all containers running
 * in our previous lulti container application we had 4 different containers running in the same Elastic beanstalk Instance at the same time
 * scaling this app would force us look into themore resource intencive service the worker. we would like to spawn more instances of it to handle load
 * scaling strategy for elastic beanstalk  creates more machines or more copies of elasticbeanstalk instance. in that sense
+
+### Lecture 154 - Kubernetes in Development and Production
+
+* In development enviornment we use kubernetes with a program called minikube (CLI)
+* minikube sets up a tiny  kubernetes cluster on our local machine
+* in production we usually make use of managed solutions. AWS EKS (Elastic Container Service for Kubernetes) or GKE (Google Cloud Kubenetes Engine) set up a Production Kubernetes Cluster for us
+* We can set a DIY Kubenretes Cluster ourselves
+* On our local development machine:
+	* minikube: will setup and manage a VM (single node) to host our containers (used only in developement)
+	* kubectl: is used to interact withthe node and manae the containers inside (used also in production)
+* TO setup kubernetes on our local machine:
+	* Install Kubectl (CLI for insteraction with our master)
+	* Install a VM driver virtualbox (to make a VM that will be our single dev node)
+	* Install minikube (runs a single node on that vm)
+* For linux
+	* update Ubuntu
+	```
+	sudo apt-get update
+	sudo apt-get install -y apt-transport-https
+	```
+	* install virtual box
+	```
+	sudo apt-get install -y virtualbox virtualbox-ext-pack
+	```
+	* install kubectl
+	```
+	// sudo apt-get update && sudo apt-get install -y apt-transport-https
+	curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+	echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+	sudo apt-get update
+	sudo apt-get install -y kubectl
+	```
+	* install minikube
+	```
+	curl -Lo minikube https://storage.googleapis.com/minikube/releases/v0.30.0/minikube-linux-amd64 && chmod +x minikube && sudo cp minikube /usr/local/bin/ && rm minikube
+	```
+	* check installation
+	```
+	minikube start
+	kubectl api-versions
+	```
+
+### Lecture 155 - Mapping Existing Knowledge
+
+* we start minikube `minikube start` and check status `minikube status` all seem ok
+* we run `kubectl cluster-info` and get
+```
+Kubernetes master is running at https://192.168.99.100:8443
+CoreDNS is running at https://192.168.99.100:8443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
+```
+* our goal is to take the multi-client image (published at docjerhub) from previous section and get it running on our local Kubernetes CLuster running as a container
+* we will use our docker-compose knowledge on kubernetes
+* in our multi-docker project our compose file had a number of services specified
+* each docker-compose service entry:
+	* can optionally get docker-compose to build an image
+	* represents a container we want to create
+	* defines networking requirements(ports)
+* in kubernetes to run the services/containers in teh cluster:
+	* k8 expects all  images to already been built
+	* we have one config file per object we want to create
+	* all networking has to be set up manually
+* in kubernetes there is no auto networking between contianers in teh cluster . all have to be setup
+* to get our simple 'multi-client' container running on our local Kubernetes CLuster
+	* make sure our image is hosted on dockerhub
+	* make one  config file to create teh container
+	* make one config file to setup networking
+
+### Lecture 156 - Adding COnfiguration Files
+
+* 
