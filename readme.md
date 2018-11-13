@@ -2099,4 +2099,26 @@ spec:
 
 ### Lecture 158 - Object Types and API Versions
 
-* 
+* like in docker-compose andAWS EB in kubernetes we use config files to make contianers
+* however in kubernetes a config file is used to create objects. Example Object Types are: 
+	* StatefulSet
+	* ReplicaController
+	* Pod: used to run a container
+	* Service: set up networking
+* Objects serve different purposes: running a container, monitoring a container, setting up networking etc
+* our config files will be fed to the kubectl CLI tool. kubectl interprets these files and creates objects
+* objects are 'things' that exist in a k8s cluster
+* 'kind' param specifies the type of object we w ant to make
+* 'apiversion' each apiVersion defines a different set of objects we can use in a config file.
+	* v1: componentStatus, Endpoints, Namespace, configMap,Event,Pod
+	* apps/v1: ControllerRevision, StatefulSet
+
+### Lecture 159 - Running Containers in Pods
+
+* when we started minikube on our local machine it started a VM using Virtualbox.
+* we refer to this VM as Node. this node is use by kubernetes to run a number of objects
+* a fundamental object type is the Pod. when we run 'client-pod.yaml' it will create a Pod inside the k8 node
+* A Pod is a grouping of containers with a common purpose
+* in K8s we cannot run a bare container in teh cluster without some overhead. the smallest unit of deployment is a Pod
+* the requirement of Pods is that at least one container will run inside them. in that sense AWS EB is a sort of Pod. id a container failed (eg worker) the rest would function.
+* within a Pod we group containers that have a very closely coupled relationship (e.g a postgres container (primary) with a logger and a backup-manager container (support))
