@@ -1984,7 +1984,15 @@ logs are for all containers running
 
 * in our previous lulti container application we had 4 different containers running in the same Elastic beanstalk Instance at the same time
 * scaling this app would force us look into themore resource intencive service the worker. we would like to spawn more instances of it to handle load
-* scaling strategy for elastic beanstalk  creates more machines or more copies of elasticbeanstalk instance. in that sense
+* scaling strategy for elastic beanstalk  creates more machines or more copies of elasticbeanstalk instance. in that sense when we scale we duplicate all our containers in the EB instance.
+* so our scaling scheme is suboptimal
+* kubernetes allwo us to control which container goes in each node (VM or physical) while the Master node orchestrates the cluster controlling what each node does.
+* Nodes + Master form a  CLuster
+* The approach is much like Docker Swarm
+* a load balancer directs the requests to our app to the nodes
+* Kubernetes:
+	* WHat: System for running many different containers over multiple different machines
+	* Why: When we need to run many different containers with different images
 
 ### Lecture 154 - Kubernetes in Development and Production
 
@@ -2027,7 +2035,7 @@ logs are for all containers running
 	kubectl api-versions
 	```
 
-### Lecture 155 - Mapping Existing Knowledge
+### Lecture 156 - Mapping Existing Knowledge
 
 * we start minikube `minikube start` and check status `minikube status` all seem ok
 * we run `kubectl cluster-info` and get
@@ -2054,6 +2062,41 @@ To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 	* make one  config file to create teh container
 	* make one config file to setup networking
 
-### Lecture 156 - Adding COnfiguration Files
+### Lecture 157 - Adding COnfiguration Files
+
+* we check docker hub and confirm our custom image is there
+* we create a new project folder `simplek8s`
+* in our project folder we add a config file 'client-prod.yaml' and write it down (we ll expalin it later)
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client-pod
+  labels: 
+    component: web
+spec:
+  containers:
+    - name: client
+      image: achliopa/multi-client
+      ports:
+        - containerPort: 3000
+```
+* we add a second config file for networking setup 'client-node-port.yaml' and write it down
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: client-node-port
+spec:
+  type: client-node-port
+  ports:
+    - ports: 3050
+      targetPort: 3000
+      nodePort: 31515
+  selector:
+    component: web
+```
+
+### Lecture 158 - Object Types and API Versions
 
 * 
