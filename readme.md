@@ -2251,4 +2251,123 @@ we spec the image the container is mad eon (from dockerhub)
 
 ### Lecture 165 - Declarative Updates in Action
 
+* we mod 'client-pod.yaml' doing the following change `image: achliopa/multi-worker`
+* we pass it in kubectl `kubectl apply -f client-pod.yaml` reply is 'pod/client-pod configured
+'
+* after update pod restarts
+* to 'Get detailed info about an object' in the cluster: `kubectl describe <object type> <object name>`
+	* describe: we watn to get detailed info
+	* <obj type>: specifies the type of object we want to get info about
+	* <obj name>: name of object 
+* the printout is hefty but we see it pulled our new image
+
+### Lecture 166 - Limitations in Config Updates
+
+* we mod the containerPort in 'client-pod' and reapply change (we expect an error because of NodePort dependency). indeed our run breaks
+* what is says though is that we are allowed to modify/update certain properties only in Pod objects. in essence only the image
+* to wrkaround it we will use another type of object that allows us to update any property
+
+### Lecture 167 - Running Containers with Deployments
+
+* the object we will use is 'Deployment': Deployment maintains a set of of identical pods, ensuring that they have the correct config and that the right number exists
+* Deployment is a superset of Pod. putting them in comparison
+* Pod:
+	* Runs a single set of containers
+	* Good for one-off dev purposes
+	* Rarely used directly in production
+* Deployment:
+	* Runs a set of identical pods (one or more)
+	* Monitors the state of each pod, updating as necessary
+	* Good for running containers in dev
+	* Good for running containers in production
+* When createa a Deployent object it gets attached to it a Pod Template
+* a Pod Template is a block of config file (how any pod create in his deployment should look like)
+* if we make a change to the Template Pod in the Deployment object. Deployment will attempt to mod an existing Pod or kill it and replace it
+
+### Lecture 168 - Deployment Configuration Files
+
+* we ll make a config file for deployment object
+```
+apiVersion: apps/v1
+kind: Deployment
+meta:
+  name: client-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: web
+  template:
+    metadata:
+      labels:
+        component: web
+    spec: 
+      containers:
+        - name: client
+          image: stephengrider/multi-client
+          ports:
+            - containerPort: 3000
+```
+
+### Lecture 169 - Walking Through the Deployment Config
+
+* apiversion and type(kind) are known concepts
+* as metadata we pass onlu name
+* in spec section in template section we specify the template to be used for every single pod in the deployment. in fact it is identical to a Pod object configuration
+* apart from template the other properties of Deployment spec are replicas and selector:
+	* replicas: num of different pods this deployment should make
+	* selector: selector looks like the Service selector. why we need it? Deployemnt does not direclty make pods. it goes to kubernetes (master) and asks it to create them. in order to managethem after they get created from kubernetes he needs a selector to find them and get a handle on them. in our case he uses the key vlaue pair of component: web
+
+### Lecture 170 - Applying a Deployment
+
+* we have the pod from previous section running in our cluster.
+* we want to delete it befoere we apply deployment
+* Remove an object: `kubectl delete -f <config file>`
+	* delete: we want to delete a running object
+	* -f: specifies that we want to feed in a file to say what to delete
+	* <config file>:  path to config file that created the object
+* the hook to the object to delete is in the name and kind of the object speced in the config file
+* it is an unavoidable imperative approach of cluster state update
+* in our case `kubectl delete -f client-pod.yaml` 
+* the delete command is like 'docker stop'. it gives 10sec for normal stop and then kill
+* we apply deployent `kubectl apply -f client-deployment.yaml`
+* we can use `kubectl get deployments` to see deployments status. 
+	* DESIRED: how many pods we want
+	* CURRENT:  num of running pods
+	* UP-TO-DATE: up to latest configuration pods
+	* AVAILABLE: pods ready to accept connections
+
+### Lecture 171 - Why Use Services?
+
+* we ll try to connect from host to the container running the app in the cluster. we hit 192.168.99.100:31515 success.
+* we run `kubectl get pods -o wide` we get more info like ip (in the cluster) of the pod and the node it is running in
+* each pod we create gets its own IP in the node(VM)
+* if the pod gets deleted and restarted or updated. it is very possible that it will get a new ip
+* by using services that export ports of pods based on selectors create a dns like capability in the node. a layer of abstraction over the ip as the hooks are based on name and not on ip which is volatile
+
+### Lecture 172 - Scaling and Changing Deployments
+
+* we will now do the change in containerPort in the deployment config file. a change we could not do in the config-pofd file. we expect to cause a pod replacement. also due to NodePort service port mappings we expect to not be able to visit the app.we save and apply
+* if we run `kubectl get pods` we see that there are no restarts. the id of the pod is new
+* we scale up the replicas in the deployment config from 1 to 5. we save and reapply
+* 4 additional pods are created.
+* we change the image int he pod template of deployement config and reapply. deployment adapts (not instantly) some new are created and some old are dumped.
+
+### Lecture 173 - Updating Deployment Images
+
+* when a new version of an iage becomes available we want to be able to deploy the changes. the course of actions is the following:
+	* Change deployment to use multi-client again
+	* update the multi-client image, push to Docker Hub
+	* Get the deployment to recreate our pods with the latest version of multi-client
+* we bring deployment config file in its original  state and apply it to the cluster
+
+### Lecture 174 - Rebuilding the CLient Image
+
+* we follow the flow of previous section to rebuild test and publish our image to dockerhub
+* in complex folder in client/src/App.js we make a change and commit/push
+* we build the image locally `docker build -t achliopa/multi-client .`
+* we push the built image to docker-hub `docker push achliopa/multi-client`
+
+### Lecture 175 - Triggering Deployment Updates
+
 * 
