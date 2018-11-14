@@ -2370,4 +2370,43 @@ spec:
 
 ### Lecture 175 - Triggering Deployment Updates
 
+* geting the deployent to recreate our pods with latest version is challenging
+* there a lot of blog posts on different ways to convicne kubernetes to re pull an image without changing the image tag in config
+* to trigger an update we said we have t mod the config  file and reapply it
+* if we reapplya config  with no changes kubectl  will reject the file
+* *First option to trigger deployment updates:* Manually delete pods to get the deployment to recreate them with the last version. (Deleting pods manually is silly)
+* *Second option to trigger deployment updates:* Tag build images with areal version number and specify the version in the confgi file. (Adds an extra step in teh production deployment process)
+* *Third option to trigger deployment updates:* Use an imperative command to update the image version the deployment should use (Uses an Imperative Command)
+* in the last 2 options we need to tag our image before pushing to hub with a verison
+* We cannot pass the version inthe config file as env variable. We are not allowed to use environment vars in k8s config files
+* in second optionw e need to commit the new updated config file. also we use the docker build command in the CI environemtn (Travis)
+* Third option is the least bad
+
+### Lecture 176 - Imperatively Updating a Deployments image
+
+* the steps we will follow: tag the image with aversion number and push it docker hub -> run a 'kubectl' command forcing the deployment to use the new image version
+* we switch to comple/client
+* we run `docker build -t achliopa/multi-client:v5 .`
+* we push it dockerhub `docker push achliopa/multi-client:v5`
+* in simplek8s project we run the following command
+* Imperative command to update image: `kubectl set image <object_type> / <object_name> <container_name> = <new_image_to_use>`
+	* set: we want to change aproperty
+	* we want to change the image property
+	* <object_type>: type of object
+	* <object_name>: name of object
+	* <container_name> name of the container we are updating (get this from config file)
+	* <new_image_to_use>: full name of image to use with tag
+* the command is `kubectl set image deployment/client-deployment client=achliopa/multi-client:v5`
+* we apply it and check in browser
+
+### Lecture 177 - Multiple Docker Installations
+
+* as we said before nodes (VMs) run docker. so they host a docker client (cli) and a docker-server
+* master talks with  docker cli in the cluster nodes passing commands
+* in our local machine we have 2 copies of docker (docker running on local machine) and docker running in teh VM node (Virtualbox) created from minikube
+* docker cli on host by default connects to docker-server on the host
+* we can configure docker client on our machine to talk to the docker-server inthe cluster node (VM) on our machine
+
+### Lecture 178 - Reconfiguring Docker CLI
+
 * 
