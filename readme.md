@@ -2088,9 +2088,9 @@ kind: Service
 metadata:
   name: client-node-port
 spec:
-  type: client-node-port
+  type: NodePort
   ports:
-    - ports: 3050
+    - port: 3050
       targetPort: 3000
       nodePort: 31515
   selector:
@@ -2119,6 +2119,136 @@ spec:
 * we refer to this VM as Node. this node is use by kubernetes to run a number of objects
 * a fundamental object type is the Pod. when we run 'client-pod.yaml' it will create a Pod inside the k8 node
 * A Pod is a grouping of containers with a common purpose
-* in K8s we cannot run a bare container in teh cluster without some overhead. the smallest unit of deployment is a Pod
+* in K8s we cannot run a bare container in teh cluster without some overhead. Pod is the smallest unit od deployment
 * the requirement of Pods is that at least one container will run inside them. in that sense AWS EB is a sort of Pod. id a container failed (eg worker) the rest would function.
-* within a Pod we group containers that have a very closely coupled relationship (e.g a postgres container (primary) with a logger and a backup-manager container (support))
+* within a Pod we group containers that have a very closely coupled relationship (e.g a postgres container (primary container) with a logger and a backup-manager container (support containers)) and must be executed together. if the primary fails the others have no reason to be.
+* in 'client-pod.yaml' we specify a pod that will run 1 container named client (name is used for logging).
+we spec the image the container is mad eon (from dockerhub)
+* with ports param in container spec in pod config we say we want to expose port 3000 to the outside world (containerport) 
+* port 3000 is exposed in in the config file of the nginx server that runs in the container so we need to export it
+
+### Lecture 160 - Service Config Files in Depth
+
+* in 'client-pod.yaml' we also specify metadata of the pod like its name (used in logging) and labels used in networking
+* in 'client-node-port.yaml' config file we specify a 'Service' object type
+* A 'Service' object type sets up networking in a Kubernetes cluster
+* For Services objects there are 4 subtypes
+	* ClusterIP
+	* NodePort : exposes a container to the outside world (only good for dev purposes)
+	* LoadBalancer
+	* Ingress
+* in our service config file. we spec a subtype of NodePort. so we make a NodePort Service to be able to access from our local machine browser the container (client) in the cluster.
+* We DO NOT use NodePort on production environments
+* Inside our Local Machine
+	* We have a Kubernetes Node VM created by Minikube `minikube start`
+	* every kubernetes node in a cluster has a service called 'kube-proxy' that serves as the nodes only window to the outside world
+	* a request coming to the node (e.g from the LM browser) goes to the kube-proxy that looks into it and routes it to services or pods in the node
+	* the NodePort service takes the request and forwards it to the Pod (client-pod) running the multi-client container which in its config file exposes port 3000
+* In the NodePort config there is no reference to the pod by name. it uses a selector by label with tag 'component' so we refer by label tag to the pod
+* So NodePort with do the routing to any pod with label key value pair of 'component: web' label key-vlaue names are arbitrary
+* what the port spec does
+```
+  ports:
+    - port: 3050
+      targetPort: 3000
+      nodePort: 31515
+```
+* is it exposes the selected pods targePort (3000) to the outside world (it should be exposed in the pod as well)
+* ports is an array of mappings
+	* port : is a port that an other Pod in the node can use to connect to the selected Pods in our case to multi-client Pod (we dont use) 
+	* targetPort : is the port in the selected Pod that we want to open traffic to (should be same as containerPod)
+	* nodePort : is the port we will use from outside the nod e(e.g our LM browser) to access the targetPort. if we dont assign it it will be randomly assigned in range (30000 - 32767)
+* the strange port num is a reason it is not used in produduction
+
+### Lecture 161 - Connecting to Running Containers
+
+* we are now ready to load our config files in the kubernetes cluster and try to access our container from browser
+* to feed our config file we will use the kubectl tool using the apply command `kubectl apply -f <filename>`
+	* kubectl: cli we use to change our Kubernetes cluster
+	* apply: change the current configuration of our cluster
+	* -f: we want to specify a file that has the config changes
+	* <filename>: path to the file with the config
+* to apply our config files:
+	* we start the cluster with `minikube start`
+	* we run `kubectl apply -f client-pod.yaml`. the pod/client-pod gets created
+	* we run `kubectl apply -f client-node-port.yaml`. service is created
+	* we print the status of all our running pods with `kubectl get pods`. it printsout a list of all our pods in the cluster with thier status
+* Print the status of all running Pods: `kubectl get pods`
+	* kubectl: CLI we use to change our kubernetes cluster
+	* get: we want to retrieve information about a running object
+	* pods: specifies the object type  we want to get information about
+* in the pod list the READY number is X/Y X is the running instances and Y the ones we requested
+* In the same way we printout the status of running services: `kubectl get services`
+* we get 2 enbtries: our NodePort and a ClusterIP which is a cluster inner service
+* our NodePort service has a cluster IP and an external IP (null). in PORTs we have <port>:<nodePort>:<protocol>
+* as we expect (no external IP assigned) if we hit localhost:<nodePort> from our LM brwser we see nothing
+* the external IP is a property assigned by minikube that started the cluster (VM). we can get it with `minikube status` or `minikube ip`. we visit up and it runs although with errors (no backend running)
+
+### Lecture 162 - The Entire Deployment Flow
+
+* after we run the client-pod.yaml that creates the pod we confirm with `kubectl get pods` that is is running. if we run `docker ps` in our machine we see a lot of containers running on of them is the multi-client that runs in our pod. we kill it. if we rerun `docker ps` it is still there... it was restarted. with `kube get pods` we confirm it as RESTARTS index went from 0 to 1
+* In a realistic k8s deployment scenario we have:
+	* a number of images in dockerhub waiting to be deployed
+	* one or more config files (like client-pod.yaml)
+	* a Master node running a number of programs to manage the cluster
+	* a number of nodes (VMs or physical machines) with docker installed
+* We asusme that:
+	* one of the images in docker hub is 'multi-worker'
+	* we have config files (deployment files) that specify we want 4 copies of 'multi-worker' to run
+	* on our master a program 'kube-api-server' is running and monitors the cluster
+* the course of actions is: 
+	* config file is passed to master (kubectl apply ...)
+	* master registers our request in a list of responsibilities (a todo list ) like multi-worker 0/4 (4 requested 0 running)
+	* kube-api-server reaches out to the available nodes (3) and asks them to run a number of instances of multi-worker image (depending on their load)
+	* each node runs docker. the copy of docker in the node will reach out to dockerhub and get the image. copy it and store it in the local cache
+	* each node will use the image to create containers according to master order and run them
+	* kube-api-server confirms that the requesten number of instances is up and running
+	* master is continuously polling the nodes to confirm that he has the instances requested running. if one fails it is restarted. he can use whatever resource available (nodes) to meet its goal
+
+### Lecture 163 - Imperative vs Declarative Deployments
+
+* Kubernetes key points:
+	* Kubernetes is a system to deploy containerized apps
+	* Nodes are individual machines (or VM's) that run containers (slaves)
+	* Masters are machines (or vm's) with a set of programs to manage nodes
+	* Kubernetes didn't build our images - it got them from somewhere else
+	* Kubernetes (the master) decided where to run each container - each node can run a dissimilar set of containers
+	* To deploy something, we update the desired state of the master with a config file
+	* The master works constantly to meet our desired state
+* Minikube is a scaled down kubernetes cluster with 1 node (VM)
+* We can have control on where our containers will be deployed (which node)
+* The term desired state refers to the list of responsibilities
+* There are 2 ways to approach deployment:
+	* Imperative Deployments (Discrete Commands): 'Do exactly these steps to arrive at this container setup'
+	* Declarative Deployments (Guidance): 'Out container setup should look like this. Make it happen'
+* Imperative Deployment imaginary scenario
+	* Goal: We need 3 containers
+	* Actions: check state => issue commands to alter state => achieve goal
+* Imperative Deployment imaginary scenario (expert mode):
+	* Goal: Update x containers to v1.23
+	* Actions: WTF?? too much containers  too much work to do
+* Declarative Deployment imaginary scenario:
+	* Goal: I need to update multi-worker to v1.23
+	* Actions: 1) Change config file t0 spec multi-workerv1.23 => Send config file to kubernetes. (Master takes car of all changes, we dont care about current state or anything)
+* A lot of docs in stack overflow or kubernetes docs recommend issuing commands into kubectl (imperative approach)
+* Kubernetes (kubectl) has commnads to suport declartive approach. Always strive to take the declarative approach. at least in production
+
+## Section 13 - Maintaining Sets of Containers with Deployments
+
+### Lecture 164 - Updating Existing Objects
+
+* our goal in previous section was: 'Get the multi-client image running on our local K8s Cluster running as a container'
+* our new goal is: 'Update our existing pod to use the multi-worker image' AKA find the existing pod and update the image it uses
+	* Imperative Approach: Run a command to list out current running pods => run a command to update the current pod to use a new image
+	* Declarative Approach: Update our config file that originally created the pod => throw the updated config file into kubectl
+* in the Declarative Approach Kubernetes does the follwoing:
+	* Updated config file is applied to kubectl (name of object, type/kind of object, updates e.g image name)
+	* kubectl sends it to master
+	* master looks into the config file and inspects the name and kind properties.  
+	* master looks into all running services in the cluster. 
+	* if he finds a running object with same name and kind it updates it instead of creating new 
+* Name and kind are the unique identifying tokens for updates
+
+### Lecture 165 - Declarative Updates in Action
+
+* 

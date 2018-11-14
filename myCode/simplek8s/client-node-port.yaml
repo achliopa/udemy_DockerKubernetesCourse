@@ -3,9 +3,9 @@ kind: Service
 metadata:
   name: client-node-port
 spec:
-  type: client-node-port
+  type: NodePort
   ports:
-    - ports: 3050
+    - port: 3050
       targetPort: 3000
       nodePort: 31515
   selector:
