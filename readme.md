@@ -2409,4 +2409,22 @@ spec:
 
 ### Lecture 178 - Reconfiguring Docker CLI
 
-* 
+* if we want our local docker-cli runningon host to communicate witht he docker server running in the node(in minikube) we should run `eval $(minikube docker-env)` 
+* this only configures the current terminal window. temporary
+* if we want every terminal we open to have this feat we can run the comand in the terminal at window open time (see docs)
+* `minikube docker-env` prints out a num of enb variables. with eval we temporary set them in the host machine (the machoine running the terminal)
+
+### Lecture 179 - Why Mess with Docker in the Node?
+
+* Why do it?
+	* use all the same debugging technique we learned from Docker
+	* Manually kill containers to test kubernetes cluster ability to heal
+	* delete cached images in teh node
+* I can get logs from inside the container. `docker logs <cont ainer id>`
+* we can execute secondary commands inside the container `docker exec -it <container id> <command>`
+* a lot of docker commands are available in kubectl 
+* we can kill all in node with `docker system prune`
+
+## Section 13 -
+
+### Lecture 180 - 
