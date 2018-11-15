@@ -2425,6 +2425,184 @@ spec:
 * a lot of docker commands are available in kubectl 
 * we can kill all in node with `docker system prune`
 
-## Section 13 -
+## Section 13 - A Multi-Container App with Kubernetes
 
-### Lecture 180 - 
+### Lecture 180 - The Path To Production
+
+* we will take our complex fibonacci calculating app and deploy it in kubernetes
+* the architecture we will use in development will use the minikube node.
+* the architecture will comprise of
+	* an 'Ingress Service' accepting and routing traffic from outside workd
+	* a 'ClusterIP Service' with a Deployment of multi-client pods 
+	* a 'ClusterIP Service' with a Deployment of multi-server pods 
+	* a 'ClusterIP Service' with a Deployment of multi-worker pod (single) 
+	* a 'ClusterIP Service' with a Deployment of Redis pod (single) 
+	* a 'ClusterIP Service' with a Deployment of Postgres pod (single)
+	* a Postgres PVC 
+	* com routes (port maps) between ClientIP services
+* ClusterIP services replace the NodePort Services
+* PVC = Persistent Volume Claim
+* Our path to Production will be:
+	* Create Config files for each service and deployment
+	* Test locally on minikube
+	* Create Gtihub/Travis flow to build images adn deploy
+	* deploy app to cloud provider
+
+### Lecture 182 - A quick Checkpoint
+
+* we cp our complex project from previous section as baseline in a new project folder 'complexk8s'
+* we run docker-compose.yml to see that all is ok *we make sure our docker-cli points to the local machine) `docker-compose up --build`
+* to make sure all is running we repeat `docker-compose up`
+* we test in 'localhost:3050'
+
+### Lecture 183 - Recreating the Deployment
+
+* we remove docker-compose file and dockerrun. we dont need them anymore. we will rely on kubernetes to do these tasks
+* also we remove travis.yml. we will build it from scratch
+* we delete nginx folder. we will use k8s ingress service instead
+* we add a folder named k8s for our config files (11 files)
+* we add 'client-deployment.yaml' in k8s. we want 3 pods running multi-client image. the content is the same as in previous section
+
+### lecture 184 - NodePort vs ClusterIP Services
+
+* Services: sets up networking in a Kubernmetes Cluster
+	* CluserIP: exposes a set of pods to other objects in the cluster
+	* NodePort: exposes a set of pods tothe outside world (only good for dev purposes)
+* ClusterIP is much more restrictive. it allows access to everything in the cluster to the exposed port of a pod (group of pods)
+* access from the outside world is provided by Ingress Service
+
+### Lecture 185 - The ClusterIP  Config
+
+* in k8s we add 'client-cluster-ip-service.yaml' and add configuration
+* configuration is almost identical to NodePort
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: client-cluster-ip-service
+spec:
+  type: ClusterIP
+  selector:
+    component: web
+  ports:
+    - port: 3000
+      targetPort: 3000
+```
+* we use a selector with a ky:val pair for the target of the service
+* we do port maping from target to port in teh cluster. there is no nodePort (it doesn not allow external access anyhow)
+
+### Lecture 186 - Applying Multiple Files with Kubectl
+
+* we first delete our existing deployment in minikube.
+* we find it `kubectl get deployments`
+* se delete it `kubectl delete deployment client-deployment`
+* we delete the service as well `kubectl get service` => `kubectl delete service client-node-port`
+* to apply multiple config `kubectl apply -f k8s` passing the folder where all our files are located
+
+### Lecture 187 - Express API deployment config
+
+* we add 'server-deployment.yaml' and 'server-client-ip-service.yaml'
+* our multi-server image and container/pod will listen on port 5000 (hardcoded in express listen)
+* deployment config is identical with client
+* inthe config we will later pass in the env vars to connet to datastorage
+
+### Lecture 188 - Cluster IP for Express API
+
+* same as client
+
+### Lecture 189 - Combining Config into Single Files
+
+* to avoid having a ton of config files we can combine them
+* eg combine a Service and Deployment for a set of pods
+* we add a 'server-config.yaml' file to combine server related config. we cp the context of the 2 files in it. the trick is to separate them with '---' 3 dashes. also both config texts shoud follow standard yaml indentation rules
+* usually we group per service(pod group)
+
+### Lecture 190 - The worker deployment
+
+* same job. 1 config file (deployment.. like the others (1 replica)
+* no need to assign ports no one connects to it. we spec ports only when we need incoming traffic to pod. no cluster ip service this time
+
+### Lecture 191 - Reapplying a batch of Config files
+
+* we apply all config files `kubectl apply -f k8` from project root folder
+* we check status. `kubectl get pods`
+* we check a pod log `kubectl logs <pod name>`
+
+### Lecture 192 - Creating and Applying Redis Config
+
+* we add 2 more config files for redis pod. same as others (deploymen clusterip) 1 replica redis image port 6379
+
+### Lecture 193 - Postgres Config
+
+* same thing . 1 replica  postgres image, 5432 port
+* we apply the files
+
+### Lecture 194 - The need for Volumes with Databases
+
+* PVC = Persistent Volume Claim
+* volume is the same concept as in docker
+* Postgres Deployment containes a Pod. Pod contains a Postgres Running Container. Postgres Container inside has its isolated Container FS
+* Postgress takes data and stores them in a DB located on an FS
+* Container FS is NOT persistent. when we kill the container it is gone....
+* DBs have to be persistent
+* to solve this problem. Postgrs or any other DB container HAS to use a 'Volume' or mapped storage space ont he host machine for its DB data
+* we have to make sure that if postgrs container is restarted it will have access to the same volume on home machine
+* if we scale on postgres contianers we will have 3 processes accessing the same volume (BEWARE OF RACE CONDITIONS) its a NONO. we need to add more configuration for redundancy etc
+
+### Lecture 195-197 - Kubernetes Volumes vs Persistent Volumes vs Persistent Volume Claims
+
+* *Volume* meaning:
+	* In generic container terminology: some type of mechanism that allows a container to access a filesystem outside itself
+	* In Kubernetes: an *Object* that allows a container to store data at the pod level
+* in kubenetes we can write a config file for a volume
+* In kubernetes there are 3 object types for volumes:
+	* *Volume*: it creates a data storage pocket existing or attached to a particular pod. it can be accessed by any container in the pod. if container gets killed or restarted it still has access to the volume. If Pod dies or is deletd, the Volume gets deleted with it
+	* *Persistent Volume Claim*: available Persistent Volume for us to claim and use. It can be already reserved and available (Statically Provisioned) in the cluster or it can be made on the fly with new space reservation (Dynamically Provisioned). completely independent of pods or containers
+	* *Persistent Volume*: it creates a data storage pocket outside the pod. it is not associated to any container or any pod. if container or pod accesing it restarts no problem. it persists
+* we use the last 2 for data that needs to be persistent
+* the analogy between Persistent Volume and PVC is like shopping for an HDD for a custom PC build. there are options advertised, a sales person is getting our request  and handling the storage. some options instances are ready to use. some are made on demand in a backend factory and sent to the sales person.
+	* the PC build is the POd configuration
+	* The storage options billboard is a PVC (persistent volume claim)
+	* The  salesman is  Kubernetes master
+	* The ready made storage options are Statically Provisioned Persistent Volumes
+	* The backend factory of storage is the Dynamically Provisioned Persistent Volume
+* Persistent Volume: actual HDD segments available for use
+* Persistent Volume Claim: advertised storages that can be made from existing storage segments already reserved in the cluster (Statically Provissioned) or new reserved space (Dynamiclly Provissioned)
+
+### Lecture 198 - Claim Config Files
+
+* Claim is an advertisement of the storage options a pod can use as Persuistent Volumet to cover its persistent storage needs
+* we write our own config file `database-persistent-volume-claim.yaml`
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: 
+  name: database-persistent-volume-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Lecture 199 - Persistent Volume Access modes
+
+* a Volume Claim is not an actual instance of storage
+* our config under the spec says that if we attach this claim to a pod. kubernetes must try to find an instance of storage of size (e.g a slice of the host machine HDD that meets the requiremnets (1GB) that supports the specified access modes
+* The available access modes are:
+	* ReadWriteOnce: can be used by a single node
+	* ReadOnlyMany: Multiple Nodes can read from this
+	* ReadWriteMany: Can be read and written to by many nodes
+* there are other options that we dont use and leave them as defaults
+
+### Lecture 200 - Where does Kubernetes allocates pErsistent Storage?
+
+* an important (the most important) option is storage class 'storageClassName' where we pass the provisioner and some sub options
+* when we hanbdle the claim to k8s to be fulfilled: 
+	* when we run it on our machine (dev) k8s evaluates the available storage options. on a dev machine it uses a slice of HDD. there are not other options
+	* on cloud deployents and providers there are a ton of options we can use (Google Cloud Persistent Disk, Azure Disk, AWS Block Store etc)
+* if we run `kubectl get storageclass` we will see all the different options k8s have on our machine to use for persistent storage
+* there is always a default or standard option
+* the provisioner or how k8s decides how to use this storage is in 'k8s.io/minikube-hostpath' which essentially means a path on host of minikube
+* [Storage Classes Options](https://kubernetes.io/docs/concepts/storage/storage-classes/)
