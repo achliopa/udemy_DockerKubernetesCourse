@@ -4,3 +4,6 @@
 [submodule "myCode/complex"]
 	path = myCode/complex
 	url = git@github.com:achliopa/multi-docker
+[submodule "myCode/complexk8s"]
+	path = myCode/complexk8s
+	url = git@github.com:achliopa/multi-k8s.git

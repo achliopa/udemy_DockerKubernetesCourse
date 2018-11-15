@@ -2846,4 +2846,51 @@ spec:
 
 ### Lecture 221 - Creating a Gihub Repo
 
-* same drill like before submodule to our course repo
+* same drill like before submodule to our course repo 'achliopa/multi-k8s'
+
+### Lecture 222 - Linking the Github Repo to Travis
+
+* same drill. visit travis and enable it on repo (aftere synching account)
+
+### Lecture 224 - Creating a Google Cloud Project
+
+* we log in to our google cloud account
+* we ll use the console to create a new project
+* we create anew project named 'multi-k8s'
+
+### Lecture 225 - Linking a Billing Account
+
+* we select our new project. we need to enable billing to the project
+* we click billing and get nothing... maybe because our project is linkekd to a managed domain in gsuites
+
+### Lecture 226 - Kubernetes Engine Init
+
+* we ll attempt to make a new kubernetes cluster
+* in the project dashboard we click 'kubernetes engine'
+* it takes some time (refresh page)
+
+### Lecture 227 - Creating a Cluster with Google CLoud
+
+* we click 'create cluster'
+* we select standard cluster
+* we give a cluster a name 'multi-cluster'
+* we select a zone close to our location 'europe-west3'
+* at 'node pools' we spec each Vm that will added to our k8s cluster as node
+* we choose 3 nodes
+* the machine type we choose 1vCPU w/ 3.75 GB memory
+* we can choose a small one with 1.7GB but it moght break
+* no advanced settings
+* click 'create'
+
+### Lecture 229 - Kubernetes Dashboard on Google Cloud
+
+* once our cluster is created we click on its name and see info on its configuration
+* we see info on the nodes (we can change the specs)
+* we click on workloads (nothing yet no deployed app)
+* services is also empty
+* applications is about 3rd party SW running on our cluster
+* config is about secrets
+* storage is about cloud storage (persistent volumes)
+* in googe cloud our default storage provider is called GC persistent disk (gce-pd) we see it in storage classes .more on [google cloud persistent disk](https://cloud.google.com/persistent-disk/)
+
+### Lecture 230 - Travis Deployment overview
