@@ -2606,3 +2606,244 @@ spec:
 * there is always a default or standard option
 * the provisioner or how k8s decides how to use this storage is in 'k8s.io/minikube-hostpath' which essentially means a path on host of minikube
 * [Storage Classes Options](https://kubernetes.io/docs/concepts/storage/storage-classes/)
+
+### Lecture 201 - Designating a PVC in a Pod Template
+
+* in our postgres deployment config file we update the template so that when a pod is created is requesting the claim
+* the template spec section becomes
+```
+spec:
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim: 
+            claimName: database-persistent-volume-claim
+      containers:
+        - name: postgres
+          image: postgres
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+          	- name: postgres-storage
+          		mountPath: /var/lib/postgresql/data
+          		subPath: postgres
+```
+* this volumes section allocates the storage for the pods created by this template using the claim we created. the volume gets a name
+* in the container we mount the volume by its name. also we spec wher e in teh container fs will be mounted.
+* we use subPath to set a directory in the host map location 9actual storage where data will be located (foldername) this is required by postgres
+
+### Lecture 202 - Applying a PVC
+
+* we apply configs the usual way
+* we can see pv instance with `kubectl get pv` and pvc with `kubectl get pvc`
+
+### Lecture 203 - Defining Environment Variables
+
+* in our previous complex project we saw that multi-worker and mulit-server containers need a set of env vars to connect to the postres db and redis cache
+* redis is accessed by both while postgres only be server
+* REDIS_PORT, PGUSER, PGDATABASE, PGPORT are constants easy to set ina config file
+* REDIS_HOST and PGHOST are constants as well. we need to provide a hostname for the redis or postgres pod client-ip-service. the name of the client-ip-service is the hostname
+* PGPASSWORD. we dont want to expose it plain in our config file and expose it
+
+### Lecture 204 - Adding Env Variables to Config
+
+* in `worker-deployment.yaml` in container definition we add an env: key with an array of key value pairs for the env vars
+```
+          env:
+            - name: REDIS_HOST
+              value: redis-cluster-ip-service
+            - name: REDIS_PORT
+              value: 6379
+```
+* we do the same for server
+```
+            - name: PGHOST
+              value: postgres-cluster-ip-service
+            - name: PGPORT
+              value: 5432
+            - name: PGDATABASE
+              value: postgres
+            - name: PGUSER
+              value: postgres
+```
+
+### Lecture 205 - Creating an Encoded Secret
+
+* we tackle PGPASWORD. to keep it secret we will use a new kubernetes object type: Secrets
+* Secrets: securely stores a piece of information in the cluster, such as a database password, api key
+* we ll use an imperative command to create the secret object and  not a config file.
+* why? to keep it secret. if we created a config file the secret would be in plain text in the file in d anger of getting exposed
+* we have to rerun the comand in any environment we deploy our cluster
+* Creating a Secret: `kubectl create secret generic <secret name> --from-literal <key>=<value>`
+	* create: imperative command to create a new object
+	* secret: type of object we are going to create
+	* generic: type of secret
+	* <secret name>: name of secret for later referencein a pod config
+	* --from-literal: we are going to add the secret info into this command, as opposed e.g from a file
+	* <key>=<value>: key-value pair of the secret info like in an env var
+* for our PGPASSWORD we use `kubectl create secret generic pgpassword --from-literal PGPASSWORD=postgres_password`
+* apart from genreic there are 2 other types of secrets. 'docker-registry' and 'tls'
+* secret vwas created. we verify it with `kubectl get secrets` data 1 means we have 1 keyvalue pair
+* we have overriden defualt pasword so we need to pass the secret as env ironment variable
+
+### Lecture 206 - Passign Secrets as Env Variables
+
+* in 'server-deployment.yaml' we add 
+```
+            - name: PGPASSWORD
+              valueFrom: 
+                secretKeyRef:
+                  name: pgpassword
+                  key: PGPASSWORD
+```
+* instead of value we use valueFrom. we spec the name of the secret and the key we want to use. a secrets objectt kan have multiple key value pairs
+* we need to makse sure postgres knows about the pasword we use (not the default)
+* we add an env property in container in pod template so that default password gets overwritten
+```
+          env:
+            - name: PGPASSWORD
+              valueFrom: 
+                secretKeyRef:
+                  name: pgpassword
+                  key: PGPASSWORD
+```
+
+### Lecture 207 - Environemtn Variables as Strings
+
+* kubernetes complains when we attemp to pass values in key value pairs as nnumbers.
+* env variable values must be passed in as strings
+* all we have to do is wrap numbers in quotes
+
+## Section 15 - Handling Traffic with Ingress Controllers
+
+### Lecture 208 - Load Balancer Services
+
+* we move to the part where we allow traffic from outside world come in our cluster
+* to do that we will use other type of Services.
+	* LoadBalancer: Legacy way of getting network traffic in to a cluster
+	* Ingress: Exposes a set of services to the outside world
+* A LoadBalancer does two separate things inside a cluster:
+	* it allows access to only one specific set of pods
+	* it works in the background reaching out to the cloud provider creating a loadbalancer (app or classic LB) creating a link between that and the service inside the cluster
+* to create one we use a config file of kind: Service and type: LoadBalancer
+* in our app we have 2 sets of pods we want external access to so Loadbalancer does not do the trick
+
+### Lecture 209 - A Quick Note on Ingress
+
+* In kubernetes there a re many different implementations of ingress
+* we will use 'Nginx Ingress'. more specificaly we will use 'ingress-nginx' a community led project. [github link](https://github.com/kubernetes/ingress-nginx) OFFICIAL KUBERNETES project
+* we DO NOT use 'kubernetes-ingress' a project led by nginx company [github repo](https://github.com/nginxinc/kubernetes-ingress)
+* setup of 'ingress-nginx' changes depending on the environment (local, GC,AWS,Azure)
+* for the course weare going to setup ingress nginx on local and in GC
+
+### Lecture 211 - Behind the Scenes of Ingress
+
+* in our app we are writing config files where we specify the desired state of our aplication in deployment object config files.
+* thiese files are passed to the deployment running obeject that update their state
+* deployment is like a controller of state
+* in kubernetes a controller is any object that works continuously to achieve a desired state
+* Ingress is itself a type of cotnroller object. we will config it with a set of rules and it will try to achieve them
+* Precondition: The current app state is: No routing at all 
+* we write down ingress routing rules to get traffic to services => pass them over to the Controller for our Ingress Service. => controller works to make sure these routing rules are setup
+* Postcondition: A Pod running nginx handles routing in our specified way (New state)
+* THE INNERS OF INGRESS SERVICE: Ingress Config file => passed to Ingress Controller =>A type of Service accepting incoming traffic is created. => incoming traffic to cluster is routed by this new service to the desired service 
+	* Ingress Config: Object that has a set of configuration rules describing how traffic should be routed
+	* Ingress COntroller: watches for changes to the ingress and updates the 'thing' that handles traffic
+* all this runs in our node
+* the kind of thing or serice created doing the routing in ubiquous. we dont know yet exactly what it is. We see it as a combo of Ingress Controller + thing that does the routing
+
+### Lecture 213 - More Behind the Scenes of Ingress
+
+* Ingress-Nginx in GoogleCloud Architecture is like.
+	* Incoming Traffic comes to [Google Cloud LoadBalancer](https://cloud.google.com/load-balancing/).
+	* GC Load Balancer sends traffic in the cluster to a LoadBalancer Service
+	* The LoadBalancerService is attached to a Deployment running a nginx-controller/nginx pod 
+	* A set of Ingress Config rules are applied to the Deployment
+	* The Nginx pod applies the rules and routes traffic to the ClusterIP services inside the cluster according to our specs
+* Loadbalancer service is the one we talked about before..
+* when we set ingress-nginx another pod is created in our cluster (deployment cluster-ip service combo) running the 'default-backend pod' this does a set of helathchecks on the cluster
+* this architecture raises a question. why not do it ourselves adding a loadbalcer service and a deployment of custom nginx inour cluster
+* the nginx image used in ingress-nginx has code specific for running in a k8s cluster. one thing that it does is thait routes directly to the service pods bypassing the cluster-ip-service to do things like sticky sessions
+* [learn more on ingress](https://www.joyfulbikeshedding.com/blog/2018-03-26-studying-the-kubernetes-ingress-system.html)
+
+### Lecture 215 - Setting Up Ingress Locally
+
+* to set it up we follow the docs on [github on ingress-nginx]https://kubernetes.github.io/ingress-nginx/deploy/()
+* we execute the mandatory command `kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/mandatory.yaml`
+* we check the yaml in browser. it is a (complex) config file
+	* it sets up a namespace
+	* it sets up some unknow types of objects
+	* it sets up a deployment of 'nginx-ingress-controller'
+	* a numberof ConfigMaps
+* we go to minikube section and follow steps: `minikube addons enable ingress`
+* we check GC config file for ingress (its short and sweet LoadBalancer service)
+
+### Lecture 216 - Creating the Ingress Config
+
+* in complex project when we set the nginx router we routed / paths to Client (React) and /api reqs to Server (express). our config file will set up the same
+* we name it 'ingress-service.yaml'
+```
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-service
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            backend:
+              serviceName: client-cluster-ip-service
+              servicePort: 3000
+          - path: /api/
+            backend:
+              serviceName: server-cluster-ip-service
+              servicePort: 5000
+```
+* we set 2 routing rules in spec. directing paths to cluster-ip services
+* the annotations used are another type of metadata
+* the first tells that the ingress controlleer type we will use is nginx
+* the second that we will chop of the /api part of path before sending it to the upstream service (rewrite-target)
+* the rules map path to backend services and ports
+* we apply the file in kubectl
+
+### Lecture 217 - Testing Ingress Locally
+
+* its time to test our app in browser. we get the ip of our cluster `minikube ip`
+* browser complains on non secure...
+* nginx tries to force anyone coming to the app to use secure connection
+* ingress nginx uses a dummy certificate 'Kubernetes Ingress Controller Fake Certificate'
+* untrusted certifiacates are not tolerated by chrome
+
+### Lecture 218 - The Minikube Dashboard
+
+* in kubernetes in development env we can use a dashboard `minikube dashboard`
+* we get a nice production grade dashboard to monitor our cluster
+* Replicas and Replica Sets are deprecated. use Deployments instead
+* dashboard can be used to add yaml files of issue commands but is not recommended.
+
+## Section 16 - Kubernetes Production Deployment
+
+### Lecture 219 - The Deployment Process
+
+* Create Github Repo
+* Tie Repo to Travis CI
+* Create Google Cloud Porject
+* Enable Billing for the Porject
+* Add deployment scripts to the repo
+* this project will invlove alittle amount of billig from google to use their cloud kubernetes engine
+
+### Lecture 220 - Google Cloud vs AWS for Kubernetes
+
+* Why Google Cloud?
+	* Google created Kubernetes
+	* AWS only recently got Kubernetes support
+	* far, far easier to poke around Kubernetes on Google Cloud
+	* Excellent documentation for beginners
+* we get a console that feels like running the cluster locally
+
+### Lecture 221 - Creating a Gihub Repo
+
+* same drill like before submodule to our course repo
