@@ -2894,3 +2894,22 @@ spec:
 * in googe cloud our default storage provider is called GC persistent disk (gce-pd) we see it in storage classes .more on [google cloud persistent disk](https://cloud.google.com/persistent-disk/)
 
 ### Lecture 230 - Travis Deployment overview
+
+* the most complex travis.ml file we built so far
+	* install google cloud sdk cli
+	* configure the SDK  with our Google Cloud auth info
+	* login to docker CLI
+	* build the test version of multi-client
+	* run tests
+	* if tests are successful, run a script to deploy newest images
+	* build all our images, tag each one, push each to docker hub
+	* apply all configs to the k8s folder
+	* imperatively set latest images on each deployment
+* travis will reach out to our kubenetes cluster and make  changes
+* Google Cloud SDK CLI is our way to remotely interact and update our cluster
+* we have to configure the cli
+* if we want to mode our our cluster we just change our config files and apply it
+
+### Lecture 231 - installing the Google CLoud SDK
+
+* 
