@@ -2995,3 +2995,79 @@ before_install:
 script:
   - docker run achliopa/multi-k8s-client-test npm test -- --coverage
 ```
+
+###  Lecture 237 - Custom Deployment Providers
+
+* to do the actual deployment we will use a separate script from the travis.yml file
+* we will use it to build our production images, push them to dockerhub, apply all config files in teh k8s folder, use the imperative command to set the latest image in deployment
+* in AWS EB we did the deployment in the deploy section of the travis.yml
+* there we used a provider. a predefined build script provided by AWS EB for travis
+* such thing does not exist in Travis for kubernetes engine so we need to build it on our own
+```
+deploy:
+  provider: script
+  script: bash ./deploy.sh
+  on:
+    branch: master
+```
+* in 'deploy.sh' we will write our script
+* we add 'deploy.sh' in project root folder
+
+### Lecture 238 - Unique Deployment Images
+
+* in the shell script file we build the production images 
+```
+docker build -t achliopa/multi-client -f ./client/Dockerfile ./client
+docker build -t achliopa/multi-worker -f ./worker/Dockerfile ./worker
+docker build -t achliopa/multi-server -f ./server/Dockerfile ./server
+```
+* being loged in to dockerhub (in Travis CI VM) we push them
+```
+docker push achliopa/multi-client
+docker push achliopa/multi-worker
+docker push achliopa/multi-server
+```
+* next step is to apply all config files in k8s (kubectl is available in travis vm through gcloud sdk) `kubectl apply -f k8s`
+* we imperatively set latest images in each deployed service `kubectl set image deployments/server-deployment server=achliopa/multi-server`
+* if we do not explicitely set tags to the images. the last one we upload to hub is tagged as latest
+* so when we pull from dockerhub (in case of implicitely naming) we have the latest so why to update imperatively?
+* in aprev lecture we said to use imperative update command we need to expliciterly tag images
+
+### Lecture 239 - Unique tags for Built Images
+
+* we dont want to manually tag images in each build. we want to tag them automatically
+* in every build we will tag it as latest and with GIT_SHA a unique identifier of the HEAD in branch 
+* we can seee this number in a folder of our git enabled project running `git rev-parse HEAD`
+* each commit produses a SHA id. we can see them with `git log`
+* our uploaded image in the dockerhub will carry 2 tags: latest and SHA id
+* the build command additng the 2 tags
+```
+docker build -t achliopa/multi-client:latest achliopa/multi-client:$GIT_SHA  -f ./client/Dockerfile ./client
+```
+* our image in dockerhub wiil look like 'achliopa/multi-client:latest' 'achliopa/multi-client:$SHA'
+* our implerative command to use the latest image (latest build)
+```
+kubectl set image deployments/server-deployment server=achliopa/multi-server:$SHA
+```
+* when we pass a specific SHA in our imperative command kubernetes will update and use it
+* $SHA is the actual tag of the HEAD.
+* This approach helps a lot in debugging
+	* Broken App! what codebase are we running?
+	* deployment is running mulit-client:78jf54gf5j14(SHA)
+	* git checkout 78jf54gf5j14
+	* debug the app locally knowing the exact code running in production
+* Knowing which codebase we are running is INVALUABLE for debugging
+* why apply latest tag? if a new engineer runs `kubectl apply -f k8s` without knowing about our cuurent version. he will get a deployment of the latest codebase without having to worry about specifying a SHA
+* our deployment config files do not spec a version so by defualt gets latest image
+
+### Lecture 240 - Updating the Deployment Script
+
+* we expose the GIT_SHA as env variable in teh travis yaml to use it in the deploy script
+* we add in .travis.yml the part tht sets the env variable to use in our deployment scripts
+* we also disable prompts in google CLI so that it does not ask for input
+```
+env:
+  global:
+    - SHA=$(git rev-parse HEAD)
+    - CLOUDSDK_CORE_DISABLE_PROMPTS=1
+```
