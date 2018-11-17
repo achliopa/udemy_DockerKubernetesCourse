@@ -3064,10 +3064,32 @@ kubectl set image deployments/server-deployment server=achliopa/multi-server:$SH
 
 * we expose the GIT_SHA as env variable in teh travis yaml to use it in the deploy script
 * we add in .travis.yml the part tht sets the env variable to use in our deployment scripts
-* we also disable prompts in google CLI so that it does not ask for input
+* we also disable prompts in google CLI as env param so that it does not ask for input as we do it in automated way and we cannot provide imput
 ```
 env:
   global:
     - SHA=$(git rev-parse HEAD)
     - CLOUDSDK_CORE_DISABLE_PROMPTS=1
 ```
+* our final deployment script is 
+```
+docker build -t achliopa/multi-client:latest -t achliopa/multi-client:$SHA -f ./client/Dockerfile ./client
+docker build -t achliopa/multi-worker:latest -t achliopa/multi-worker:$SHA -f ./worker/Dockerfile ./worker
+docker build -t achliopa/multi-server:latest -t achliopa/multi-server:$SHA -f ./server/Dockerfile ./server
+docker push achliopa/multi-client:latest
+docker push achliopa/multi-worker:latest
+docker push achliopa/multi-server:latest
+
+docker push achliopa/multi-client:$SHA
+docker push achliopa/multi-worker:$SHA
+docker push achliopa/multi-server:$SHA
+
+kubectl apply -f k8s
+kubectl set image deployments/client-deployment client=achliopa/multi-client:$SHA
+kubectl set image deployments/worker-deployment worker=achliopa/multi-worker:$SHA
+kubectl set image deployments/server-deployment server=achliopa/multi-server:$SHA
+```
+
+### Lecture 241 - Configuring the GCloud CLI on Google Console
+
+* 
