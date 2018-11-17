@@ -2912,4 +2912,86 @@ spec:
 
 ### Lecture 231 - installing the Google CLoud SDK
 
-* 
+* we start writing down the .travis.yml file in project root.
+* we add usual start
+```
+sudo: required
+services:
+	- docker
+```
+* before install 
+* we download and install google-cloud-sdk and install it locally in travs ci instance on vm /dev/hull
+* we apply an additional env configuration on travis ci using source
+* we install kubectl command using gcloud sdk
+* we also have to authorize ourselves on google cloud (in AWS we created an IAM user and used the credentials in travic ci repo setting as env vars) we ll use a json file with some info to enable authentication. of course sensitive data will be non visibvle in the file (travis env vars again)
+```
+before_install:
+  - curl https://sdk.cloud.google.com | bash > /dev/null;
+  - source $HOME/google-cloud-sdk/path.bash.inc
+  - gcloud components updata kubectl
+  - gcloud auth activate-service-account --key-file service-account.json
+```
+
+### Lecture 232 - Generating a Serice Account
+
+* to do it:
+	* create a service account
+	* download service account credentials in a json file
+	* download and install the travis CLI
+	* encrypt and upload the json file to our travis account
+	* in travis.yml, add code to unencrypt the json file and load it into GCloud SDK
+* json file has sensitive data DO NOT expose it to outsiders (DO not commit) encrypt it and store it to travis CI using Travis CLI
+* in GC Platform we go to IAM & Admin => Service Accounts => Create Service Account => 
+* enter a name (travis-deployer) => Create => select a project role (kubernetetes Engine => KE Admin) => Continue => Create Key => Key Type (JSON) => Save 
+* A private key has been saved on our local machine as a JSON File (DO NOT DO NOT EXPOSE IT
+
+### Lecture 233 - Running Travis CLI in a Container
+
+* we need to download and install travis cli on our dev machine
+* it requires ruby to run locally (In linux we have it)
+* we can do it in a container (get a docker image that has ruby inside, use travis cli there)
+* the flow of commands on the vm or locally:
+	* docker run -it -v $(pwd):app ruby:2.3 sh
+	* gem install travis --no-rdoc --no-ri
+	* gem install travis
+	* travis login
+	* <copy json into volumed directory so we can use it in the container>
+	* travis encrypt-file service-account.json
+* the run script maps volume to surrent dir (make sure to run it outside repo)
+* gem install installs natively (using extra packages) therefore we CANNOT use alpine
+* we run 2 first commands
+
+### Lecture 234 - Encrypting a Srvice Account File
+
+* we login to travis `travis login`
+* our json file is in the pwd (the folder where we run the command)
+* we rename it to 'service-account.json'
+* we cd in container to app `cd /app` and run the encrypt script we need also to pass in the repo  `travis encrypt-file service-account.json -r achliopa/multi-k8s`
+* we get some info on terminal that tells us what to do add the command to our travis.yml in beffore install section (before all other commands in section)
+* an encrypted file is generated. in our script folder. we move it to our repo project root (it neds to be commited so it included on the push to be used by Travis) DELETE the unencrypted before commit
+* we remove the image from host
+
+### Lecture 235 - More Google Cloud CLI Config
+
+* first step of travis config file make is done
+* we now have to configure the google sdk with our google cloud info
+* the openssl step we added unencrypts the service-acount json file in the travis CI vm
+* gccloud auth step uses it to activate the account ang give the travic ci vm user admin rights to control the kubernetes engine cluster deployment `  - gcloud auth activate-service-account --key-file service-account.json`
+* we now need to tell gccloud on which project (full project id) and zone (go to kubernetes engine to see what we set before as zone) it is working on 
+```
+  - gcloud config set project multi-k8s-222621
+  - gcloud config set compute/zone europe-west3-a
+```
+* we need to set the name of the cluster `  - gcloud container clusters get-credentials multi-cluster`
+
+### Lecture 236 - Running Tests with Travis
+
+* we login to docker in the script (done it before) using travis project env vars `  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin`
+* add env vars in travis project
+* 2 encrypted keys are alrerady there Our google cloude service account keys
+* we now have to build our test version and runt he tests `  - docker build -t achliopa/multi-client-test -f ./client/Dockerfile.dev ./client`
+* we add our test script like before
+```
+script:
+  - docker run achliopa/multi-k8s-client-test npm test -- --coverage
+```
