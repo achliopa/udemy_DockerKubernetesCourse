@@ -3092,4 +3092,170 @@ kubectl set image deployments/server-deployment server=achliopa/multi-server:$SH
 
 ### Lecture 241 - Configuring the GCloud CLI on Google Console
 
-* 
+* as we did locally on our machine we have to create asecret also on the google cloud for PGPASSOWRD
+* we ll use an imperative command
+* we need access to akubectl instance on the googlecloud cluster
+* we click activate cloud shell on top right corner in cloud console kubernetes engine->cluster
+* in the terminal we issue our commands (doing configuration like in our travis file before issuein gthe command)
+```
+gcloud config set project multi-k8s-222621
+gcloud config set compute/zone europe-west3-a
+gcloud container clusters get-credentials multi-cluster
+```
+
+### Lecture 242 - Creating a Secret on Google Cloud
+
+* we check our connection to the cluster from the gcloud terminal using `kubectl get pods`
+* we issue `kubectl create secret generic pgpassword --from-literal PGPASSWORD=postgres_password` in terminal . our secret is created
+* we test it in Kubernetes engine => configuration
+
+### Lecture 243 - Helm Setup
+
+* before we deploy our app in production we need one last piece
+* in our local kubernetes project we set up the ingress service based on the nginx project
+* we added this service to minikube
+* we need to do sthing similar in gcloud.
+* we go to ingress-nginx docs to see how to do it for the gcloud. in the docs of this project we go to deployment section. we can do it followin the commands by we choose to use Helm
+* [Helm](https://github.com/helm/helm) is a program we can use to administer 3rd party SW ina kubernetes cluster
+* We use iut issuing commands to Helm client that goes to Tiller Server
+* the easy way is to use `kubectl apply`
+* Helm is composed of 2 parts. Helm cli tool + Tiller server running in Kubernetes cluster
+* we gotto helm quickstart guide => installng helm from script. we cp the 3 commands in our clusters terminal
+```
+curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > get_helm.sh
+chmod 700 get_helm.sh
+./get_helm.sh
+```
+* we dont run helm init yet (in gcloud we need more configuration)
+
+### Lecture 244 - Kubernetes Security with RBAC
+
+* the docs say that in gcloud it install RBAC by default
+* the pod running tiller will attempt to do changes in the configuration of our cluster
+* RBAC = Role based Access Control
+	* Limits who can access and modify objects in our cluster
+	* Enabled on G Cloud by default
+	* Tiller wants to make changes to our cluster, so it needs to get some permissions set
+* User Accounts: identifies a person administering our cluster
+* Service Accounts: identifies a 'pod' administering a cluster
+* ClusterRoleBinding: Authorizes an account to do a certain set of actions across the entire cluster
+* RoleBinding: Authorizes an account to do a certain set of actions in a 'single namespace'
+* As admin users we can use kubectl in the cluster and do changes. user accout is the thing giving us this priviledge
+* A service account belongs to a pod 
+* Accouns per se does not give privildeges alone
+* Its the Bindings that bind accounts to roles . the roles have the proviledges (authorization)
+* In a cluster some namespaces are created automatically (default, kube-public, kube-system)
+* we can isolate clkuster resources in different namespaces
+* we need to give tiller server running in apod authorization to do changes in cluster. so what we need is Service Account (atach it to tiller pod) and ClusterRoleBinding (allow to do changes to entire cluster)
+
+### Lecture 245 - Assigning Tiller a Service Account
+
+* `kubectl create serviceaccount --namespace kube-system tiller` create a new service account called tiller in the kube-system namespace
+* `kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller` create a new clusterrolebinding with the role 'cluster-admin' and assign it to service account 'tiller'
+* we put our serviceaccoun in a namespace (existing)
+* cluster-admin is a preset role
+* after setting the roles we init helm `helm init --service-account tiller --upgrade`
+* we cannow use help to install new services
+
+### Lecture 246 - Ingress-Nginx with Helm
+
+* we go to [github doc](https://kubernetes.github.io/ingress-nginx/deploy/#using-helm)
+* we install it using helm with RBACV enabled `helm install stable/nginx-ingress --name my-nginx --set rbac.create=true`
+* we run the commanbd in gcloud shell
+* we get the default server, config maps etc
+* we get logs on the resources created and config
+
+### Lecture 247 - The result of Ingress Nginx
+
+* we refress the kubernetes engines -> cluster page and go to workloads tab
+* we have an ingress controller (it runs the config file) and a default backend doing health checks. we cann assign express js routes to theis backend to check the healt of our app
+* in services tab we see a Loadbalancer with 2 IPs (we use them to access our project) and a cluster-ip for backend
+* we click the ips and get 404
+* in network services in dashboard menu -> load balancing we see the gcloud load balancer created for us. we sse its ip and the backend instances (3 cluster nodes) it gives acces to
+
+### Lecture 248 - Finally Deployment
+
+* all we have to do is commit our work and push it to github
+* we see in travis ci
+* our massive build PASSESSS.
+
+### Lecture 250 - Verifying Deployment
+
+* we check in dockerhub our repos
+* we check the tags.. we see that both tags are there (build and  latest)
+* we refresh page in our cluster and see workloads. we see our pods running
+* we can click services seing the pods and their stats
+* in services we have the ingres service with the rules we set in the config yaml
+* in configuration we have our secret the secret of service account we created for tiller pod and config maps
+* in storage we have the persistent storage
+* we hit the external ip and see the app. IT WORKS
+
+### Lecture 251 - A Workflow for Changing in Prod
+
+* what we will do
+	* checkout a branch
+	* make changes
+	* commit changes
+	* push to github branch
+	* create a pr
+	* wait for tests go green
+	* merge the pr
+	* see changes appear on app in prod
+* travis tests any branch. deploys only mater
+* we checkout devel branch `git checkout -b devel` do change commit and push to `git push origin devel`
+* in github we got o repo and add apull request
+* we compare the devel with master to merge
+* add a  comment and create pull request. wait tests to go green
+* we merge and wait travis to do the job... we revisit our app in browset to verify changes
+* to fix the https thing we will need to buy a domain name (have it)
+
+## Section 17 - HTTPS Setup with Kubernetes
+
+### Lecture 254 - HTTPS Setup Overview
+
+* to add HTTPS support in our cluster app we will setup interaction between our Kubernetes cluster and a cerification authority called LetsEncrypt
+* LetsEncrypt is a services that gives free certificates
+* the interaction between CA (Ceritification Authority) and our cluster is like:
+	* K8s Cluster => LetsEncrypt: Hi, i own multi-k8s.com can you give me a certificate that says I do?
+	* LetsEncrypt => K8s Cluster: I dont't believe you. I am going to make a request to multi-k8s.com/.well-known/9194941 if you own it you'll reply
+	* LetsEncrypt => K8s Cluster: ok, you check out. here's a certificate that's good for 90 days
+* we dont need to implement this interaction. we will install a plug in with helm to our cluster to handle this for us.
+
+### Lecture 256 - Domain Name Setup
+
+* we need to make our domain name to point to our cluster ip
+* we do it in dns settings of our provide adding an A record to a k8s subdoimain
+
+### Lecture 257 - Cert Manager Install
+
+* the service we will add to kubernetes to do the crtification handshake is [Cert Manager](https://github.com/jetstack/cert-manager) we go to docs => getting started => installing cert-manager with helm
+* we run the hel install in our gcould tshell
+```
+helm install \
+    --name cert-manager \
+    --namespace kube-system \
+    stable/cert-manager
+```
+
+* add `export PATH="$(echo ~)/helm-v2.6.0/linux-amd64:$PATH"` in .bashrc
+
+### Lecture 258 - How to wire up Cert Manager
+
+* The way Cert Manager works:
+	* It uses 'Certificate' an object describing details about the certificate that should be obtained
+	* It uses 'Issuer' an object telling CertManager where to get the cerificate from
+	* It sets up infrastructure to respond to HTTP challenge
+	* gets the certificate stores it in a secret
+* the cert manager helm install command creates a deployment with apod a service account for it and a clusterrolebinding
+* it will set a route handler to answer the  verification request
+* to make it  work we need to set 2 objects with config files. Ceritificate and issuer
+* these are object types
+* we can use multiple issuers. we can use a staging version and a production version
+* the certificate object uses details that normally apear in a certificate
+* the certificate will contain kubernetes secrets for some details
+* secrets is the way CertManager stores the certificate in teh cluster
+* we also need to reconfigure our ingress nginx to use the certificate
+
+### Lecture 259 - Issuer Config File
+
+* in k8s folder we add 'issuer.yaml'
